@@ -20,7 +20,7 @@
     "zmq",
     "zeromq",
     "0mq",
-    "request response"
+    "request response",
     "microservices",
     "ministers"
   ],
@@ -35,5 +35,10 @@
     "tcp-ping": "^0.1.1",
     "uuid": "^2.0.3",
     "zmq": "^2.15.3"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.16.0",
+    "babel-plugin-transform-object-rest-spread": "^6.16.0",
+    "babel-preset-es2015": "^6.16.0"
   }
 }
