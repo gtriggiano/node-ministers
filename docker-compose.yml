@@ -1,0 +1,12 @@
+version: '2'
+services:
+
+  development:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./src:/package/src
+      - ./.babelrc:/package/.babelrc
+      - ./package.json:/package/package.json
+      - ./playground.js:/package/playground.js

@@ -1,0 +1,12 @@
+FROM mhart/alpine-node:6.3
+
+WORKDIR /package
+
+# Install zeromq && dumb-init
+RUN apk add --no-cache build-base py-pip libc6-compat zeromq zeromq-dev\
+      && pip install dumb-init \
+      && rm -rf /var/cache/apk/*
+
+# Install dependencies
+ADD package.json /package/package.json
+RUN npm install
