@@ -1,0 +1,11 @@
+.DS_Store
+
+# Distribution folder
+lib/
+
+# NPM stuff
+node_modules
+npm-debug.log
+
+# Playground file
+playground.js

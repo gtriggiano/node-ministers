@@ -1,0 +1,39 @@
+{
+  "name": "ministers",
+  "version": "0.0.0",
+  "description": "",
+  "main": "lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gtriggiano/node-ministers.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gtriggiano/node-ministers/issues"
+  },
+  "homepage": "https://github.com/gtriggiano/node-ministers",
+  "keywords": [
+    "mdp",
+    "majordomo pattern",
+    "zmq",
+    "zeromq",
+    "0mq",
+    "request response"
+    "microservices",
+    "ministers"
+  ],
+  "author": "Giacomo Triggiano <giacomotriggiano@gmail.com> (http://github.com/gtriggiano)",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.4.6",
+    "debug": "^2.2.0",
+    "eventemitter3": "^2.0.2",
+    "lodash": "^4.16.4",
+    "rxjs": "^5.0.0-rc.1",
+    "tcp-ping": "^0.1.1",
+    "uuid": "^2.0.3",
+    "zmq": "^2.15.3"
+  }
+}
