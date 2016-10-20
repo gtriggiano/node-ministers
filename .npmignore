@@ -1,0 +1,15 @@
+# Docs folder
+docs/
+
+# Scripts folder
+scripts/
+
+# Source folder
+src/
+
+# Tests folder
+tests/
+
+.babelrc
+
+docker-compose.yml
