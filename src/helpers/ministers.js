@@ -36,16 +36,16 @@ const ministerCanDoService = curry((service, minister) =>
 )
 
 // Exported
-const getMinisterInstance = (router, address, latency) => {
+const getMinisterInstance = (router, id, latency) => {
   let minister = {
     type: 'Minister',
-    address,
+    id,
     latency,
     liveness: MINISTERS.HEARTBEAT_LIVENESS,
     workers: []
   }
 
-  Object.defineProperty(minister, 'send', {value: (...frames) => router.send([minister.address, ...frames])})
+  Object.defineProperty(minister, 'send', {value: (frames) => router.send([id, ...frames])})
   return minister
 }
 
