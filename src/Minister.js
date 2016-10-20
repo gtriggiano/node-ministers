@@ -1,4 +1,4 @@
-import { isString, each } from 'lodash'
+import { isString, isInteger, isArray, each, every } from 'lodash'
 import debug from 'debug'
 import zmq from 'zmq'
 import Rx from 'rxjs'
@@ -12,7 +12,10 @@ import EventEmitter from 'eventemitter3'
 
 // Utils
 import {
-  getOSNetworkExternalInterface
+  getOSNetworkExternalInterface,
+  isValidIPv4,
+  isValidEndpoint,
+  prefixString
 } from './helpers/utils'
 
 // Messages
@@ -208,17 +211,23 @@ const Minister = (settings) => {
   // Minister messages
   let _onMinisterHello = (msg) => {
     let ministerId = msg[0]
-    let {binding, latency} = JSON.parse(msg[3])
+    let {binding, latency, endpoint} = JSON.parse(msg[3])
 
     let minister = _ministerById(ministerId)
     if (!minister) {
+      if (binding) log(`Communicating with peer (${ministerId}) bound at ${endpoint}. Latency: ${latency}ms`)
+      if (!binding) log(`Communicating with connected peer (${ministerId}). Latency: ${latency}ms`)
+
       minister = getMinisterInstance(binding ? _connectingRouter : _bindingRouter, ministerId, latency)
       _monitor(minister)
       _ministers.push(minister)
       minister.send([
         'MM',
         MINISTERS.M_HELLO,
-        JSON.stringify({latency, binding: !binding})
+        JSON.stringify({
+          latency,
+          binding: !binding
+        })
       ])
     }
   }
@@ -239,11 +248,16 @@ const Minister = (settings) => {
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
     let { identity, latency } = JSON.parse(msg[3])
+    log(`Received notification of a new connected minister (${identity}). Greeting...`)
     _bindingRouter.send([
       identity,
       'MM',
       MINISTERS.M_HELLO,
-      JSON.stringify({latency, binding: true})
+      JSON.stringify({
+        latency,
+        binding: true,
+        endpoint: _bindingRouter.endpoint
+      })
     ])
   }
 
@@ -279,7 +293,6 @@ const Minister = (settings) => {
   let _tearDownBindingRouter = () => {
     _unsubscribeFromBindingRouter()
     _unsubscribeFromBindingRouter = null
-    _bindingRouter.unbindSync(_bindingRouter.address)
     _bindingRouter.close()
     _bindingRouter = null
     log('Binding Router destroyed')
@@ -315,8 +328,6 @@ const Minister = (settings) => {
     let workerMessages = messages.filter(isWorkerMessage)
     let ministerMessages = messages.filter(isMinisterMessage)
     let ministerNotifierMessages = messages.filter(isMinisterNotifierMessage)
-
-    messages.subscribe((msg) => log(msg))
 
     subscriptions.clientHello = clientMessages
       .filter(isClientHello).subscribe(_onClientHello)
@@ -373,9 +384,15 @@ const Minister = (settings) => {
       delete peer.heartbeatCheck
     }
   }
-  let _onClientLost = (client) => {}
-  let _onWorkerLost = (worker) => {}
-  let _onMinisterLost = (minister) => {}
+  let _onClientLost = (client) => {
+    _unmonitor(client)
+  }
+  let _onWorkerLost = (worker) => {
+    _unmonitor(worker)
+  }
+  let _onMinisterLost = (minister) => {
+    _unmonitor(minister)
+  }
   let _presentToMinisters = () => {
     let getMinistersEndpoints
     if (isString(_settings.ministers)) {
@@ -391,9 +408,10 @@ const Minister = (settings) => {
     getMinistersEndpoints
       .then(endpoints => {
         endpoints.forEach(endpoint => {
-          log(`Trying to reach minister at ${endpoint}`)
+          log(`Found potential peer at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
+              log(`Peer at ${endpoint} is reachable. Connecting and presenting myself (${_connectingRouter.identity})...`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
 
@@ -416,7 +434,7 @@ const Minister = (settings) => {
               }, 500)
             })
             .catch(() => {
-              log(`Could not reach minister at ${endpoint}`)
+              log(`Could not reach peer at ${endpoint}`)
             })
         })
       })
@@ -524,8 +542,20 @@ const defaultSettings = {
   ministers: []
 }
 
+const eMsg = prefixString('Minister(settings): ')
 function validateSettings (settings) {
-
+  let {ip, port, ministers} = settings
+  if (
+    ip &&
+    !isValidIPv4(ip)
+  ) throw new Error(eMsg('settings.ip should be a valid IPv4 address'))
+  if (!isInteger(port) || port < 1) throw new Error(eMsg('settings.port should be a positive integer'))
+  if (!ministers) ministers = []
+  if (!isString(ministers) && ip) throw new Error('if your ministers\'addresses are resolvable via DNS you should not set settings.ip')
+  if (
+    isArray(ministers) &&
+    !every(ministers, isValidEndpoint)
+  ) throw new Error(eMsg('settings.ministers should be either a string, representing a hostname, or an array of 0 or more valid TCP endpoints, in the form of \'tcp://IP:port\''))
 }
 
 export default Minister
