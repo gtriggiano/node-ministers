@@ -4,9 +4,19 @@ services:
   development:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: tests/Dockerfile.dev
     volumes:
       - ./src:/package/src
       - ./.babelrc:/package/.babelrc
       - ./package.json:/package/package.json
-      - ./playground.js:/package/playground.js
+
+  distribution:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.dev
+    command: ["npm", "run", "i:transpile"]
+    volumes:
+      - "./src:/package/src"
+      - "./lib:/package/lib"
+      - "./package.json:/package/package.json"
+      - "./.babelrc:/package/.babelrc"
