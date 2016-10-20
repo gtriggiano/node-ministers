@@ -9,6 +9,7 @@ services:
       - ./src:/package/src
       - ./.babelrc:/package/.babelrc
       - ./package.json:/package/package.json
+      - ./playground.js:/package/playground.js
 
   distribution:
     build:
