@@ -330,7 +330,7 @@ const Minister = (settings) => {
     let ministerMessages = messages.filter(isMinisterMessage)
     let ministerNotifierMessages = messages.filter(isMinisterNotifierMessage)
 
-    router.on('message', (...args) => console.log(args))
+    router.on('message', (...args) => console.log(args.map(a => a.toString())))
 
     subscriptions.clientHello = clientMessages
       .filter(isClientHello).subscribe(_onClientHello)
