@@ -1,4 +1,4 @@
-import { isString, isInteger, isArray, each, every } from 'lodash'
+import { isString, isInteger, isArray, each, every, pull } from 'lodash'
 import debug from 'debug'
 import zmq from 'zmq'
 import Rx from 'rxjs'
@@ -215,8 +215,12 @@ const Minister = (settings) => {
 
     let minister = _ministerById(ministerId)
     if (!minister) {
-      if (binding) log(`Communicating with peer (${ministerId}) bound at ${endpoint}. Latency: ${latency}ms`)
-      if (!binding) log(`Communicating with connected peer (${ministerId}). Latency: ${latency}ms`)
+      if (binding) log(`Communicating with minister bound at ${endpoint}.`)
+      if (!binding) if (binding) log(`Communicating with minister connected.`)
+
+      log(`Minister ID: ${ministerId}`)
+      log(`Minister latency: ${latency} milliseconds`)
+      log(``)
 
       minister = getMinisterInstance(binding ? _connectingRouter : _bindingRouter, ministerId, latency)
       _monitor(minister)
@@ -391,7 +395,9 @@ const Minister = (settings) => {
     _unmonitor(worker)
   }
   let _onMinisterLost = (minister) => {
+    log(`Lost connection with minister ${minister.id}`)
     _unmonitor(minister)
+    pull(_ministers, [minister])
   }
   let _presentToMinisters = () => {
     let getMinistersEndpoints
