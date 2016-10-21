@@ -247,7 +247,6 @@ const Minister = (settings) => {
   }
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
-    console.log(msg)
     let { identity, latency } = JSON.parse(msg[3])
     log(`Received notification of a new connected minister (${identity}). Greeting...`)
     _bindingRouter.send([
