@@ -304,15 +304,19 @@ const Minister = (settings) => {
     log('Binding Router destroyed')
   }
   let _connectingRouter
+  let _connectingRouterConnections
   let _setupConnectingRouter = () => {
     _connectingRouter = zmq.socket('router')
     _connectingRouter.linger = 1
     _connectingRouter.identity = _bindingRouter.identity
+    _connectingRouter.monitor(10, 0)
     log('Connecting Router created')
   }
   let _tearDownConnectingRouter = () => {
     _unsubscribeFromConnectingRouter()
     _unsubscribeFromConnectingRouter = null
+    _connectingRouterConnections = null
+    _connectingRouter.unmonitor()
     _connectingRouter.close()
     _connectingRouter = null
     log('Connecting Router destroyed')
@@ -366,6 +370,12 @@ const Minister = (settings) => {
     subscriptions.ministerNotifierNewMinisterConnected = ministerNotifierMessages
       .filter(isMinisterNotifierNewMinisterConnected).subscribe(_onNewMinisterConnected)
 
+    if (!isBindingRouter) {
+      let monitorSubject = new Rx.Subject()
+      _connectingRouterConnections = Rx.Observable.fromEvent(router, 'connect', (_, ep) => ep).multicast(monitorSubject)
+      subscriptions.connectinRouterConnections = _connectingRouterConnections.connect()
+    }
+
     let unsubscribe = () => each(subscriptions, subscription => subscription.unsubscribe())
     return unsubscribe
   }
@@ -416,29 +426,33 @@ const Minister = (settings) => {
     getMinistersEndpoints
       .then(endpoints => {
         endpoints.forEach(endpoint => {
-          log(`Found potential peer at ${endpoint}`)
+          log(`Found potential minister at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
-              log(`Peer at ${endpoint} is reachable with a latency of ${latency}ms. Connecting and presenting myself (${_connectingRouter.identity})...`)
+              log(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Connecting...`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
               //  Establish a notifier connection
               let notifier = zmq.socket('dealer')
               notifier.connect(endpoint)
 
-              // Lets wait abundant time to establish connection
-              setTimeout(function () {
-                // Notify the peer minister about myself
-                notifier.send([
-                  'MMN',
-                  MINISTERS.MN_NEW_MINISTER_CONNECTED,
-                  JSON.stringify({
-                    identity: _connectingRouter.identity,
-                    latency
-                  })
-                ])
-                notifier.close()
-              }, 500)
+              let connectionsSubscription = _connectingRouterConnections.subscribe(ep => {
+                if (ep === endpoint) {
+                  connectionsSubscription.unsubscribe()
+                  log(`Connected to minister at ${ep}.`)
+                  log(`Presenting myself (${_connectingRouter.identity}) through notifier`)
+                  // Notify the minister about myself
+                  notifier.send([
+                    'MMN',
+                    MINISTERS.MN_NEW_MINISTER_CONNECTED,
+                    JSON.stringify({
+                      identity: _connectingRouter.identity,
+                      latency
+                    })
+                  ])
+                  notifier.close()
+                }
+              })
             })
             .catch(() => {
               log(`Could not reach peer at ${endpoint}`)
@@ -447,7 +461,8 @@ const Minister = (settings) => {
       })
   }
   let _broadcastWorkersState = () => {
-    log(`Broadcasting state of ${_workers.length} workers`)
+    log(`Broadcasting state of ${_workers.length} workers to ${_ministers.length} ministers`)
+    log(``)
     _ministers.forEach(minister => minister.send([
       'MM',
       MINISTERS.M_WORKERS_AVAILABILITY,
