@@ -414,23 +414,21 @@ const Minister = (settings) => {
               log(`Peer at ${endpoint} is reachable with a latency of ${latency}ms. Connecting and presenting myself (${_connectingRouter.identity})...`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
-
-              // Notify the peer minister about established connection
+              //  Establish a notifier connection
               let notifier = zmq.socket('dealer')
               notifier.connect(endpoint)
-              let msg = [
-                'MMN',
-                MINISTERS.MN_NEW_MINISTER_CONNECTED,
-                JSON.stringify({
-                  identity: _connectingRouter.identity,
-                  latency
-                })
-              ]
-              console.log(msg)
-              notifier.send(msg)
 
-              // Close the notifier socket
-              setTimeout(() => {
+              // Lets wait abundant time to establish connection
+              setTimeout(function () {
+                // Notify the peer minister about myself
+                notifier.send([
+                  'MMN',
+                  MINISTERS.MN_NEW_MINISTER_CONNECTED,
+                  JSON.stringify({
+                    identity: _connectingRouter.identity,
+                    latency
+                  })
+                ])
                 notifier.close()
               }, 500)
             })
