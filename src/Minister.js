@@ -419,14 +419,15 @@ const Minister = (settings) => {
               let notifier = zmq.socket('dealer')
               notifier.linger = 0
               notifier.connect(endpoint)
-              notifier.send([
+              let msg = [
                 'MMN',
                 MINISTERS.MN_NEW_MINISTER_CONNECTED,
                 JSON.stringify({
                   identity: _connectingRouter.identity,
                   latency
                 })
-              ])
+              ]
+              notifier.send(msg)
 
               // Close the notifier socket
               setTimeout(() => {
