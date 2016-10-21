@@ -439,6 +439,7 @@ const Minister = (settings) => {
               identityRequester.on('message', (identity) => {
                 log(`Minister at ${endpoint} has identity ${identity}`)
                 log(`Sending HELLO message.\n`)
+                identityRequester.close()
                 _connectingRouter.send([
                   identity,
                   'MM',
@@ -448,10 +449,9 @@ const Minister = (settings) => {
                     binding: false
                   })
                 ])
-                identityRequester.close()
               })
 
-              let connectionsSubscription = _connectingRouterConnections.subscribe(ep => {
+              let connectionsSubscription = _connectingRouterConnections.delay(latency).subscribe(ep => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
                   log(`Connected to minister at ${ep}.`)
