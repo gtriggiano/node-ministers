@@ -31,9 +31,20 @@ const isValidEndpoint = (endpoint) => {
 
 const prefixString = curry((prefix, str) => `${prefix}${str}`)
 
+const parseEndpoint = (endpoint) => {
+  let [ transport, address ] = endpoint.split('://')
+  let [ ip, port ] = address.split(':')
+  return {
+    transport,
+    ip,
+    port: parseInt(port, 10)
+  }
+}
+
 export {
   getOSNetworkExternalInterface,
   isValidIPv4,
   isValidEndpoint,
-  prefixString
+  prefixString,
+  parseEndpoint
 }
