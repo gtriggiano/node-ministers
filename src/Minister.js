@@ -411,7 +411,7 @@ const Minister = (settings) => {
           log(`Found potential peer at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
-              log(`Peer at ${endpoint} is reachable. Connecting and presenting myself (${_connectingRouter.identity})...`)
+              log(`Peer at ${endpoint} is reachable with a latency of ${latency}ms. Connecting and presenting myself (${_connectingRouter.identity})...`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
 
