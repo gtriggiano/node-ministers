@@ -211,6 +211,7 @@ const Minister = (settings) => {
   // Minister messages
   let _onMinisterHello = (msg) => {
     let ministerId = msg[0]
+    console.log(ministerId)
     let {binding, latency, endpoint} = JSON.parse(msg[3])
 
     let minister = _ministerById(ministerId)
