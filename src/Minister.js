@@ -217,7 +217,7 @@ const Minister = (settings) => {
     let minister = _ministerById(ministerId)
     if (!minister) {
       if (binding) log(`Communicating with minister bound at ${endpoint}.`)
-      if (!binding) log(`Communicating with minister connected.`)
+      if (!binding) log(`Communicating with connected minister.`)
 
       log(`Minister ID: ${ministerId}`)
       log(`Minister latency: ${latency} milliseconds`)
@@ -226,6 +226,7 @@ const Minister = (settings) => {
       minister = getMinisterInstance(binding ? _connectingRouter : _bindingRouter, ministerId, latency)
       _monitor(minister)
       _ministers.push(minister)
+      log('Reply to hello')
       minister.send([
         'MM',
         MINISTERS.M_HELLO,
