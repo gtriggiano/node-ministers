@@ -241,6 +241,7 @@ const Minister = (settings) => {
     if (minister) {
       minister.workers = workers
       minister.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      log(`Received workers update from minister ${minister.id}\n`)
     }
   }
   let _onMinisterDisconnect = (msg) => {
