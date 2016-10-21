@@ -211,7 +211,6 @@ const Minister = (settings) => {
   // Minister messages
   let _onMinisterHello = (msg) => {
     let ministerId = msg[0]
-    console.log(ministerId)
     let {binding, latency, endpoint} = JSON.parse(msg[3])
 
     let minister = _ministerById(ministerId)
@@ -220,13 +219,11 @@ const Minister = (settings) => {
       if (!binding) log(`Communicating with connected minister.`)
 
       log(`Minister ID: ${ministerId}`)
-      log(`Minister latency: ${latency} milliseconds`)
-      log(``)
+      log(`Minister latency: ${latency} milliseconds\n`)
 
       minister = getMinisterInstance(binding ? _connectingRouter : _bindingRouter, ministerId, latency)
       _monitor(minister)
       _ministers.push(minister)
-      log('Reply to hello')
       minister.send([
         'MM',
         MINISTERS.M_HELLO,
@@ -254,7 +251,7 @@ const Minister = (settings) => {
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
     let { identity, latency } = JSON.parse(msg[3])
-    log(`Received notification of a new connected minister (${identity}). Greeting...`)
+    log(`Received notification of a new connected minister (${identity}). Sending HELLO message.\n`)
     _bindingRouter.send([
       identity,
       'MM',
@@ -407,7 +404,7 @@ const Minister = (settings) => {
     _unmonitor(worker)
   }
   let _onMinisterLost = (minister) => {
-    log(`Lost connection with minister ${minister.id}`)
+    log(`Lost connection with minister ${minister.id}\n`)
     _unmonitor(minister)
     pull(_ministers, [minister])
   }
@@ -429,7 +426,7 @@ const Minister = (settings) => {
           log(`Found potential minister at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
-              log(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Connecting...`)
+              log(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Connecting...\n`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
               //  Establish a notifier connection
@@ -440,7 +437,7 @@ const Minister = (settings) => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
                   log(`Connected to minister at ${ep}.`)
-                  log(`Presenting myself (${_connectingRouter.identity}) through notifier`)
+                  log(`Presenting myself (${_connectingRouter.identity}) through notifier.\n`)
                   // Notify the minister about myself
                   notifier.send([
                     'MMN',
@@ -455,14 +452,13 @@ const Minister = (settings) => {
               })
             })
             .catch(() => {
-              log(`Could not reach peer at ${endpoint}`)
+              log(`Could not reach peer at ${endpoint}\n`)
             })
         })
       })
   }
   let _broadcastWorkersState = () => {
-    log(`Broadcasting state of ${_workers.length} workers to ${_ministers.length} ministers`)
-    log(``)
+    log(`Broadcasting state of ${_workers.length} workers to ${_ministers.length} ministers\n`)
     _ministers.forEach(minister => minister.send([
       'MM',
       MINISTERS.M_WORKERS_AVAILABILITY,
