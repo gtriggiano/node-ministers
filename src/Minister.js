@@ -426,8 +426,8 @@ const Minister = (settings) => {
                   latency
                 })
               ]
-              notifier.send(msg)
               console.log(msg)
+              notifier.send(msg)
 
               // Close the notifier socket
               setTimeout(() => {
