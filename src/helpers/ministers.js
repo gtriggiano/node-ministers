@@ -70,9 +70,14 @@ const discoverOtherMinistersEndpoints = ({host, port, ownAddress}) =>
 
 const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let [ address, port ] = ministerEndpoint.split('//')[1].split(':')
-  tcpPing.ping({address, port, attempts: 5}, (err, {avg} = {}) => {
+  tcpPing.probe(address, port, (err, available) => {
     if (err) return reject(err)
-    resolve(Math.round(avg))
+    if (!available) return reject()
+
+    tcpPing.ping({address, port, attempts: 5}, (err, {avg} = {}) => {
+      if (err) return reject(err)
+      resolve(Math.round(avg))
+    })
   })
 })
 
