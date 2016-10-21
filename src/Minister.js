@@ -252,17 +252,19 @@ const Minister = (settings) => {
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
     let { identity, latency } = JSON.parse(msg[3])
-    log(`Received notification of a new connected minister (${identity}). Sending HELLO message.\n`)
-    _bindingRouter.send([
-      identity,
-      'MM',
-      MINISTERS.M_HELLO,
-      JSON.stringify({
-        latency,
-        binding: true,
-        endpoint: _bindingRouter.endpoint
-      })
-    ])
+    log('Identity requested from minister. Replying.')
+    _bindingRouter.send([msg[0], _bindingRouter.identity])
+    // log(`Received notification of a new connected minister (${identity}). Sending HELLO message.\n`)
+    // _bindingRouter.send([
+    //   identity,
+    //   'MM',
+    //   MINISTERS.M_HELLO,
+    //   JSON.stringify({
+    //     latency,
+    //     binding: true,
+    //     endpoint: _bindingRouter.endpoint
+    //   })
+    // ])
   }
 
   // Routers lifecycle management
@@ -424,23 +426,38 @@ const Minister = (settings) => {
     getMinistersEndpoints
       .then(endpoints => {
         endpoints.forEach(endpoint => {
-          log(`Found potential minister at ${endpoint}`)
+          log(`Potential minister at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
               log(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Connecting...\n`)
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
               //  Establish a notifier connection
-              let notifier = zmq.socket('dealer')
-              notifier.connect(endpoint)
+              let identityRequester = zmq.socket('dealer')
+              identityRequester.connect(endpoint)
+
+              identityRequester.on('message', (identity) => {
+                log(`Minister at ${endpoint} has identity ${identity}`)
+                log(`Sending HELLO message.\n`)
+                _connectingRouter.send([
+                  identity,
+                  'MM',
+                  MINISTERS.M_HELLO,
+                  JSON.stringify({
+                    latency,
+                    binding: false
+                  })
+                ])
+                identityRequester.close()
+              })
 
               let connectionsSubscription = _connectingRouterConnections.subscribe(ep => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
                   log(`Connected to minister at ${ep}.`)
-                  log(`Presenting myself (${_connectingRouter.identity}) through notifier.\n`)
+                  log(`Looking for minister identity.\n`)
                   // Notify the minister about myself
-                  notifier.send([
+                  identityRequester.send([
                     'MMN',
                     MINISTERS.MN_NEW_MINISTER_CONNECTED,
                     JSON.stringify({
@@ -448,12 +465,11 @@ const Minister = (settings) => {
                       latency
                     })
                   ])
-                  notifier.close()
                 }
               })
             })
             .catch(() => {
-              log(`Could not reach peer at ${endpoint}\n`)
+              log(`Could not reach minister at ${endpoint}\n`)
             })
         })
       })
