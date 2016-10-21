@@ -427,6 +427,7 @@ const Minister = (settings) => {
                   latency
                 })
               ]
+              console.log(msg)
               notifier.send(msg)
 
               // Close the notifier socket
