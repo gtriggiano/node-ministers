@@ -266,7 +266,7 @@ const Minister = (settings) => {
   let _bindingRouter
   let _setupBindingRouter = () => new Promise((resolve, reject) => {
     _bindingRouter = zmq.socket('router')
-    _bindingRouter.linger = 0
+    _bindingRouter.linger = 1
     _bindingRouter.identity = `MM-${uuid.v4()}`
     log('Binding Router created')
 
@@ -301,7 +301,7 @@ const Minister = (settings) => {
   let _connectingRouter
   let _setupConnectingRouter = () => {
     _connectingRouter = zmq.socket('router')
-    _connectingRouter.linger = 0
+    _connectingRouter.linger = 1
     _connectingRouter.identity = _bindingRouter.identity
     log('Connecting Router created')
   }
@@ -329,8 +329,6 @@ const Minister = (settings) => {
     let workerMessages = messages.filter(isWorkerMessage)
     let ministerMessages = messages.filter(isMinisterMessage)
     let ministerNotifierMessages = messages.filter(isMinisterNotifierMessage)
-
-    router.on('message', (...args) => console.log(args.map(a => a.toString())))
 
     subscriptions.clientHello = clientMessages
       .filter(isClientHello).subscribe(_onClientHello)
@@ -420,7 +418,6 @@ const Minister = (settings) => {
 
               // Notify the peer minister about established connection
               let notifier = zmq.socket('dealer')
-              notifier.linger = 0
               notifier.connect(endpoint)
               let msg = [
                 'MMN',
@@ -430,8 +427,8 @@ const Minister = (settings) => {
                   latency
                 })
               ]
-              console.log(msg)
               notifier.send(msg)
+              console.log(msg)
 
               // Close the notifier socket
               setTimeout(() => {
