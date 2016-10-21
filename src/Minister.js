@@ -434,7 +434,7 @@ const Minister = (settings) => {
               let notifier = zmq.socket('dealer')
               notifier.connect(endpoint)
 
-              let connectionsSubscription = _connectingRouterConnections.delay(latency).subscribe(ep => {
+              let connectionsSubscription = _connectingRouterConnections.delay(latency * 2).subscribe(ep => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
                   log(`Connected to minister at ${ep}.`)
