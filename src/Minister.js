@@ -216,7 +216,7 @@ const Minister = (settings) => {
     let minister = _ministerById(ministerId)
     if (!minister) {
       if (binding) log(`Communicating with minister bound at ${endpoint}.`)
-      if (!binding) if (binding) log(`Communicating with minister connected.`)
+      if (!binding) log(`Communicating with minister connected.`)
 
       log(`Minister ID: ${ministerId}`)
       log(`Minister latency: ${latency} milliseconds`)
