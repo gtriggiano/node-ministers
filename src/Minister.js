@@ -330,6 +330,8 @@ const Minister = (settings) => {
     let ministerMessages = messages.filter(isMinisterMessage)
     let ministerNotifierMessages = messages.filter(isMinisterNotifierMessage)
 
+    router.on('message', (...args) => console.log(args))
+
     subscriptions.clientHello = clientMessages
       .filter(isClientHello).subscribe(_onClientHello)
     subscriptions.clientHeartbeat = clientMessages
