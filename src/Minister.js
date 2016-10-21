@@ -406,7 +406,7 @@ const Minister = (settings) => {
   let _onMinisterLost = (minister) => {
     log(`Lost connection with minister ${minister.id}\n`)
     _unmonitor(minister)
-    pull(_ministers, [minister])
+    pull(_ministers, minister)
   }
   let _presentToMinisters = () => {
     let getMinistersEndpoints
