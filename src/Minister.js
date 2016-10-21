@@ -127,6 +127,7 @@ const Minister = (settings) => {
     let client = _clientById(clientId)
     if (client) {
       client.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(client)
     }
   }
   let _onClientDisconnect = (msg) => {
@@ -168,7 +169,10 @@ const Minister = (settings) => {
   let _onWorkerHeartbeat = (msg) => {
     let workerId = msg[0]
     let worker = _workerById(workerId)
-    if (worker) worker.liveness = MINISTERS.HEARTBEAT_LIVENESS
+    if (worker) {
+      worker.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(worker)
+    }
   }
   let _onWorkerDisconnect = (msg) => {
     let workerId = msg[0]
@@ -180,6 +184,7 @@ const Minister = (settings) => {
     let sender = _workerById(senderId) || _ministerById(senderId)
     if (sender) {
       sender.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(sender)
       let uuid = msg[3].toString()
       let body = msg[4]
       let request = _requestByUUID(uuid)
@@ -191,6 +196,7 @@ const Minister = (settings) => {
     let sender = _workerById(senderId) || _ministerById(senderId)
     if (sender) {
       sender.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(sender)
       let uuid = msg[3].toString()
       let body = msg[4]
       let request = _requestByUUID(uuid)
@@ -202,6 +208,7 @@ const Minister = (settings) => {
     let sender = _workerById(senderId) || _ministerById(senderId)
     if (sender) {
       sender.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(sender)
       let uuid = msg[3].toString()
       let body = msg[4]
       let request = _requestByUUID(uuid)
@@ -241,6 +248,7 @@ const Minister = (settings) => {
     if (minister) {
       minister.workers = workers
       minister.liveness = MINISTERS.HEARTBEAT_LIVENESS
+      _monitor(minister)
       log(`Received workers update from minister ${minister.id}\n`)
     }
   }
@@ -383,7 +391,7 @@ const Minister = (settings) => {
     _unmonitor(peer)
     peer.heartbeatCheck = setInterval(() => {
       peer.liveness--
-      log(`${peer.liveness} lives for ${peer.id}`)
+      log(`${peer.liveness} lives for ${peer.type} ${peer.id}`)
       if (!peer.liveness) {
         switch (peer.type) {
           case 'Client': return _onClientLost(peer)
