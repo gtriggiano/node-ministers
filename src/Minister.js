@@ -383,6 +383,7 @@ const Minister = (settings) => {
     _unmonitor(peer)
     peer.heartbeatCheck = setInterval(() => {
       peer.liveness--
+      log(`${peer.liveness} lives for ${peer.id}`)
       if (!peer.liveness) {
         switch (peer.type) {
           case 'Client': return _onClientLost(peer)
