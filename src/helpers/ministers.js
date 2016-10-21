@@ -17,6 +17,7 @@ import {
 
 // Internals
 const concatPortToIPs = curry((port, ips) => ips.map(ip => `${ip}:${port}`))
+
 const prependTransportToAddresses = curry((transport, addresses) => addresses.map(address => `${transport}://${address}`))
 
 const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
@@ -71,7 +72,7 @@ const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) =
   let [ address, port ] = ministerEndpoint.split('//')[1].split(':')
   tcpPing.ping({address, port, attempts: 5}, (err, {avg} = {}) => {
     if (err) return reject(err)
-    resolve(avg)
+    resolve(Math.round(avg))
   })
 })
 
