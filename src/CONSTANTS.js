@@ -26,7 +26,7 @@ const HEARTBEAT_INTERVAL = 1000
 
 const RESPONSE_TIMEOUT = 'RTO'
 
-const MINISTERS = {
+const CONSTANTS = {
   CLIENT,
   WORKER,
   MINISTER,
@@ -56,4 +56,4 @@ const MINISTERS = {
   RESPONSE_TIMEOUT
 }
 
-export default MINISTERS
+export default CONSTANTS
