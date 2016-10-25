@@ -24,6 +24,8 @@ const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames
   let _failed = false
   let _timedout = false
   let _finished = false
+  let _lostStakeholder = false
+  let _lostWorker = false
   let _timeout
 
   let request = {}
@@ -44,10 +46,19 @@ const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames
     isFailed: {value: () => _failed},
     isTimedout: {value: () => _timedout},
     isFinished: {value: () => _finished},
+    lostStakeholder: {value: () => {
+      _lostStakeholder = true
+      clearTimeout(_timeout)
+    }},
+    lostWorker: {value: () => {
+      if (_lostWorker) return
+      _lostWorker = true
+      request.sendErrorResponse(CONSTANTS.RESPONSE_LOST_WORKER)
+    }},
     sendPartialResponse: {value: (body) => {
       if (_finished) return
       clearTimeout(_timeout)
-      stakeholder.send(['MW', CONSTANTS.W_PARTIAL_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_PARTIAL_RESPONSE, uuid, body])
     }},
     sendFinalResponse: {value: (body) => {
       if (_finished) return
@@ -55,7 +66,7 @@ const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames
       _finished = true
       clearTimeout(_timeout)
       onFinished()
-      stakeholder.send(['MW', CONSTANTS.W_FINAL_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_FINAL_RESPONSE, uuid, body])
     }},
     sendErrorResponse: {value: (body) => {
       if (_finished) return
@@ -63,7 +74,7 @@ const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames
       _finished = true
       clearTimeout(_timeout)
       onFinished()
-      stakeholder.send(['MW', CONSTANTS.W_ERROR_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_ERROR_RESPONSE, uuid, body])
     }}
   })
 }
