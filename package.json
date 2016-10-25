@@ -40,7 +40,9 @@
     "lodash": "^4.16.4",
     "rxjs": "^5.0.0-rc.1",
     "tcp-ping": "^0.1.1",
+    "tweetnacl": "^0.14.3",
     "uuid": "^2.0.3",
+    "z85": "0.0.2",
     "zmq": "^2.15.3"
   },
   "devDependencies": {
