@@ -481,13 +481,33 @@ const Minister = (settings) => {
   }
   let _onClientLost = (client) => {
     _unmonitor(client)
+    let pendingReceivedRequests = _requestsFromClient(client)
+    log(`Lost connection with client ${client.id}.
+      Discarding ${pendingReceivedRequests.length} requests.`)
+    pendingReceivedRequests.forEach(request => request.lostStakeholder())
+    pull(_requests, ...pendingReceivedRequests)
+    pull(_clients, client)
   }
   let _onWorkerLost = (worker) => {
     _unmonitor(worker)
+    let pendingAssignedRequests = _requestsAssignedToWorker(worker)
+    log(`Lost connection with worker ${worker.id}
+      Discarding ${pendingAssignedRequests.length} assigned requests.`)
+    pendingAssignedRequests.forEach(request => request.lostWorker())
+    pull(_requests, ...pendingAssignedRequests)
+    pull(_workers, worker)
   }
   let _onMinisterLost = (minister) => {
-    log(`Lost connection with minister ${minister.id}\n`)
     _unmonitor(minister)
+    let pendingReceivedRequests = _requestsFromMinister(minister)
+    let pendingAssignedRequests = _requestsAssignedToMinister(minister)
+    log(`Lost connection with minister ${minister.id}
+      Discarding ${pendingReceivedRequests.length} received requests.
+      Discarding ${pendingAssignedRequests.length} assigned requests.`)
+
+    pendingReceivedRequests.forEach(request => request.lostStakeholder())
+    pendingAssignedRequests.forEach(request => request.lostWorker())
+    pull(_requests, ...pendingReceivedRequests, ...pendingAssignedRequests)
     pull(_ministers, minister)
   }
   let _presentToMinisters = () => {
