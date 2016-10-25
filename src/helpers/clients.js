@@ -3,20 +3,17 @@ import compose from 'lodash/fp/compose'
 import isEqualFp from 'lodash/fp/isEqual'
 import getFp from 'lodash/fp/get'
 
-import MINISTERS from '../MINISTERS'
-
 // Internals
 const clientHasId = (clientId) => compose(isEqualFp(clientId), getFp('id'))
 
 // External
-const getClientInstance = (router, clientId) => {
+const getClientInstance = ({router, id}) => {
   let client = {
     type: 'Client',
-    id: clientId,
-    liveness: MINISTERS.HEARTBEAT_LIVENESS
+    id
   }
 
-  Object.defineProperty(client, 'send', {value: (...frames) => router.send([clientId, ...frames])})
+  Object.defineProperty(client, 'send', {value: (...frames) => router.send([id, ...frames])})
 
   return client
 }

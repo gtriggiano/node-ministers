@@ -5,7 +5,7 @@ import isEqualFp from 'lodash/fp/isEqual'
 import negateFp from 'lodash/fp/negate'
 import getFp from 'lodash/fp/get'
 
-import MINISTERS from '../MINISTERS'
+import CONSTANTS from '../CONSTANTS'
 
 // Internals
 const requestIsNotAssigned = compose(negateFp, getFp('assignee'))
@@ -19,42 +19,51 @@ const assigneeIsMinister = compose(isEqualFp('Minister'), getAssigneeType)
 const requestHasUUID = (uuid) => compose(isEqualFp(uuid), getFp('uuid'))
 
 // Exported
-const getMinisterRequestInstance = ({stakeholder, uuid, service, options, frames}) => {
-  let _repliedWithError = false
-  let _completed = false
+const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames, onFinished}) => {
+  let _accomplished = false
+  let _failed = false
   let _timedout = false
+  let _finished = false
   let _timeout
 
-  let request = {stakeholder, uuid, service, options, frames}
+  let request = {}
 
-  if (isInteger(options.timeout) && options.timeout > 0) {
+  if (isInteger(timeout) && timeout > 0) {
     _timeout = setTimeout(() => {
-      request.sendErrorResponse(MINISTERS.RESPONSE_TIMEOUT)
+      request.sendErrorResponse(CONSTANTS.RESPONSE_TIMEOUT)
       _timedout = true
-    }, options.timeout)
+    }, timeout)
   }
 
   return Object.defineProperties(request, {
-    completed: {value: () => _completed},
-    failed: {value: () => _repliedWithError},
-    timedout: {value: () => _timedout},
+    uuid: {value: uuid},
+    service: {value: service},
+    stakeholder: {value: stakeholder},
+    frames: {value: frames},
+    isAccomplished: {value: () => _accomplished},
+    isFailed: {value: () => _failed},
+    isTimedout: {value: () => _timedout},
+    isFinished: {value: () => _finished},
     sendPartialResponse: {value: (body) => {
-      if (_completed || _timedout) return
+      if (_finished) return
       clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_PARTIAL_RESPONSE, uuid, body])
+      stakeholder.send(['MW', CONSTANTS.W_PARTIAL_RESPONSE, uuid, body])
     }},
     sendFinalResponse: {value: (body) => {
-      if (_completed || _timedout) return
-      _completed = true
+      if (_finished) return
+      _accomplished = true
+      _finished = true
       clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_FINAL_RESPONSE, uuid, body])
+      onFinished()
+      stakeholder.send(['MW', CONSTANTS.W_FINAL_RESPONSE, uuid, body])
     }},
     sendErrorResponse: {value: (body) => {
-      if (_completed || _timedout) return
-      _repliedWithError = true
-      _completed = true
+      if (_finished) return
+      _failed = true
+      _finished = true
       clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_ERROR_RESPONSE, uuid, body])
+      onFinished()
+      stakeholder.send(['MW', CONSTANTS.W_ERROR_RESPONSE, uuid, body])
     }}
   })
 }

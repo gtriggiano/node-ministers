@@ -9,13 +9,12 @@ import filterFp from 'lodash/fp/filter'
 import negateFp from 'lodash/fp/negate'
 
 import {
-  workerDoesService,
-  workerCanWork
-} from './workers'
-
-import {
   parseEndpoint
 } from './utils'
+
+import {
+  workerDoesService
+} from './workers'
 
 // Internals
 const concatPortToIPs = curry((port, ips) => ips.map(ip => `${ip}:${port}`))
@@ -31,44 +30,55 @@ const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
 
 const ministerHasId = (ministerId) => compose(isEqualFp(ministerId), getFp('id'))
 
-const takeAddressesDifferentFromAddress = (address) => filterFp(compose(negateFp, isEqualFp(address)))
+const filterEndpointsDifferentFrom = (endpoint) => filterFp(compose(negateFp, isEqualFp(endpoint)))
 
-const ministerCanDoService = curry((service, minister) =>
-  minister.workers.length &&
-  minister.workers.filter(workerDoesService(service)).filter(workerCanWork)
+const ministerDoesService = curry((service, minister) =>
+  !!~minister.workers.map(({service}) => service).indexOf(service)
 )
 
 // Exported
-const getMinisterInstance = (router, id, latency, endpoint) => {
+const getMinisterInstance = ({router, id, latency, endpoint}) => {
   let minister = {
     type: 'Minister',
     id,
     latency,
     endpoint,
-    workers: []
+    workers: [],
+    assignedRequests: 0
   }
 
   Object.defineProperty(minister, 'send', {value: (frames) => router.send([id, ...frames])})
+  Object.defineProperty(minister, 'slotsForService', {
+    value: (service) =>
+      minister.workers.filter(workerDoesService(service)).reduce((slots, {freeSlots}) => slots + freeSlots, 0)
+  })
   return minister
 }
 
 const findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
 
-const findAvailableMinisterForService = curry((ministers, service) =>
-  ministers.filter(ministerCanDoService(service)).sort((m1, m2) =>
-    m1.latency < m2.latency
+const findMinisterForService = curry((ministers, service) =>
+  ministers.filter(ministerDoesService(service)).sort((m1, m2) => {
+    let slots1 = m1.slotsForService(service)
+    let slots2 = m2.slotsForService(service)
+
+    return slots1 && !slots2
       ? -1
-      : m1.latency > m2.latency
+      : !slots1 && slots2
         ? 1
-        : 0
-  )[0]
+        : m1.latency < m2.latency
+          ? -1
+          : m1.latency > m2.latency
+            ? 1
+            : 0
+  })[0]
 )
 
-const discoverOtherMinistersEndpoints = ({host, port, ownAddress}) =>
+const discoverOtherMinistersEndpoints = ({host, port, ownEndpoint}) =>
   discoverMinistersIPsByHost(host)
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
-  .then(takeAddressesDifferentFromAddress(ownAddress))
+  .then(filterEndpointsDifferentFrom(ownEndpoint))
 
 const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let { ip, port } = parseEndpoint(ministerEndpoint)
@@ -86,7 +96,7 @@ const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) =
 export {
   getMinisterInstance,
   findMinisterById,
-  findAvailableMinisterForService,
+  findMinisterForService,
   discoverOtherMinistersEndpoints,
   getMinisterLatency
 }

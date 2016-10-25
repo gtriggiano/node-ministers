@@ -1,49 +1,55 @@
-import { curry } from 'lodash'
+import { curry, max } from 'lodash'
 import compose from 'lodash/fp/compose'
 import isEqualFp from 'lodash/fp/isEqual'
 import getFp from 'lodash/fp/get'
 import pickFp from 'lodash/fp/pick'
 
-import MINISTERS from '../MINISTERS'
-
 // Internals
 const workerHasId = (workerId) => compose(isEqualFp(workerId), getFp('id'))
 
-const workerDoesService = (serviceName) => compose(isEqualFp(serviceName), getFp('service'))
-
-const workerCanWork = compose(freeSlots => freeSlots > 0, getFp('freeSlots'))
+const workerDoesService = (service) => compose(isEqualFp(service), getFp('service'))
 
 // Exported
-const getWorkerInstance = (router, workerId, service, freeSlots) => {
+const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
   let worker = {
     type: 'Worker',
-    id: workerId,
+    id,
     service,
-    freeSlots,
-    liveness: MINISTERS.HEARTBEAT_LIVENESS
+    concurrency,
+    assignedRequests: 0,
+    latency
   }
 
-  Object.defineProperty(worker, 'send', {value: (...frames) => router.send([workerId, ...frames])})
+  Object.defineProperty(worker, 'send', {value: (...frames) => router.send([id, ...frames])})
+  Object.defineProperty(worker, 'freeSlots', {get: () => max([0, worker.concurrency - worker.assignedRequests])})
 
   return worker
 }
 
 const findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
 
-const workerState = pickFp(['id', 'service', 'freeSlots'])
+const workerToState = pickFp(['id', 'service', 'freeSlots'])
 
-const findAvailableWorkerForService = curry((workers, service) =>
-  workers.filter(workerDoesService(service)).filter(workerCanWork).sort((w1, w2) =>
-    w1.freeSlots > w2.freeSlots
+const findWorkerForService = curry((workers, service) =>
+  workers.filter(workerDoesService(service)).sort((w1, w2) => {
+    let slots1 = w1.freeSlots
+    let slots2 = w2.freeSlots
+
+    return slots1 && !slots2
       ? -1
-      : w1.freeSlots < w2.freeSlots
+      : !slots1 && slots2
         ? 1
-        : 0
-  )[0])
+        : w1.latency < w2.latency
+          ? -1
+          : w1.latency > w2.latency
+            ? 1
+            : 0
+  })[0]
+)
 
 export {
   getWorkerInstance,
   findWorkerById,
-  workerState,
-  findAvailableWorkerForService
+  workerToState,
+  findWorkerForService
 }
