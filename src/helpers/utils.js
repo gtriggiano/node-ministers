@@ -31,7 +31,7 @@ const isValidEndpoint = (endpoint) => {
 const isValidCurveKey = (key) => isString(key) && key.length === 40
 
 const isValidCurveKeyPair = (secretKey, publicKey) => {
-  if (!isValidCurveKey(secretKey) || isValidCurveKey(publicKey)) return false
+  if (!isValidCurveKey(secretKey) || !isValidCurveKey(publicKey)) return false
   var secretKey32 = z85.decode(secretKey)
   return publicKey === z85.encode(nacl.box.keyPair.fromSecretKey(secretKey32).publicKey)
 }

@@ -1,10 +1,12 @@
-import { isString, isInteger, isArray, each, every, pull, max } from 'lodash'
+import net from 'net'
 import debug from 'debug'
 import zmq from 'zmq'
+import z85 from 'z85'
 import Rx from 'rxjs'
 import uuid from 'uuid'
 import Promise from 'bluebird'
 import EventEmitter from 'eventemitter3'
+import { isString, isInteger, isArray, isPlainObject, each, every, pull, max } from 'lodash'
 
 /*
   Helpers
@@ -13,8 +15,10 @@ import EventEmitter from 'eventemitter3'
 // Utils
 import {
   getOSNetworkExternalInterface,
-  isValidIPv4,
   isValidEndpoint,
+  isValidCurveKey,
+  isValidCurveKeyPair,
+  supportingCurveSecurity,
   prefixString
 } from './helpers/utils'
 
@@ -54,15 +58,15 @@ import {
 import {
   getWorkerInstance,
   findWorkerById,
-  workerState,
-  findAvailableWorkerForService
+  workerToState,
+  findWorkerForService
 } from './helpers/workers'
 
 // Ministers
 import {
   getMinisterInstance,
   findMinisterById,
-  findAvailableMinisterForService,
+  findMinisterForService,
   discoverOtherMinistersEndpoints,
   getMinisterLatency
 } from './helpers/ministers'
@@ -78,7 +82,7 @@ import {
   findRequestByUUID
 } from './helpers/requests'
 
-import MINISTERS from './MINISTERS'
+import CONSTANTS from './CONSTANTS'
 
 const Minister = (settings) => {
   let log = debug('ministers:minister')
@@ -90,7 +94,7 @@ const Minister = (settings) => {
   // Private API
   let _connected = false
   let _togglingConnection = false
-  let _ministersWorkersUpdateInterval
+  let _ministersUpdateWorkersAvailabilityInterval
   let _requestAssigningInterval
 
   let _clients = []
@@ -98,11 +102,11 @@ const Minister = (settings) => {
 
   let _workers = []
   let _workerById = findWorkerById(_workers)
-  let _workerForService = findAvailableWorkerForService(_workers)
+  let _workerForService = findWorkerForService(_workers)
 
   let _ministers = []
   let _ministerById = findMinisterById(_ministers)
-  let _ministerForService = findAvailableMinisterForService(_ministers)
+  let _ministerForService = findMinisterForService(_ministers)
 
   let _requests = []
   let _requestByUUID = findRequestByUUID(_requests)
@@ -117,59 +121,69 @@ const Minister = (settings) => {
     let clientId = msg[0]
     let client = _clientById(clientId)
     if (!client) {
-      client = getClientInstance(_bindingRouter, clientId)
+      client = getClientInstance({
+        router: _bindingRouter,
+        id: clientId
+      })
       _monitor(client)
       _clients.push(client)
     }
   }
   let _onClientHeartbeat = (msg) => {
-    let clientId = msg[0]
-    let client = _clientById(clientId)
-    if (client) {
-      _monitor(client)
-    }
+    let client = _clientById(msg[0])
+    if (client) _monitor(client)
   }
   let _onClientDisconnect = (msg) => {
-    let clientId = msg[0]
-    let client = _clientById(clientId)
+    let client = _clientById(msg[0])
     if (client) _onClientLost(client)
   }
   let _onClientRequest = (msg) => {
-    let stakeholderId = msg[0]
-    let stakeholder = _clientById(stakeholderId) || _ministerById(stakeholderId)
-    let uuid = msg[3].toString()
-    let service = msg[4].toString()
-    let options = JSON.parse(msg[5])
-    let frames = msg.slice(1)
+    let stakeholder = _clientById(msg[0]) || _ministerById(msg[0])
+    if (stakeholder) {
+      let uuid = msg[3].toString()
+      let service = msg[4].toString()
+      let options = JSON.parse(msg[5])
+      let frames = msg.slice(1)
 
-    let request = getMinisterRequestInstance({
-      stakeholder,
-      uuid,
-      service,
-      options,
-      frames
-    })
-
-    _requests.push(request)
-    _assignRequests()
+      let request = getMinisterRequestInstance({
+        stakeholder,
+        uuid,
+        service,
+        timeout: options.timeout,
+        frames,
+        onFinished: () => pull(_requests, request)
+      })
+      _requests.push(request)
+      _assignRequests()
+    }
   }
   // Worker messages
   let _onWorkerReady = (msg) => {
     let workerId = msg[0]
-    let serviceName = msg[3].toString()
-    let freeSlots = JSON.parse(msg[4])
+    let {service, concurrency, latency} = JSON.parse(msg[2])
     let worker = _workerById(workerId)
     if (!worker) {
-      worker = getWorkerInstance(_bindingRouter, workerId, serviceName, freeSlots)
+      worker = getWorkerInstance({
+        router: _bindingRouter,
+        id: workerId,
+        service,
+        concurrency,
+        latency
+      })
       _monitor(worker)
       _workers.push(worker)
+      _broadcastWorkersAvailability()
     }
   }
   let _onWorkerHeartbeat = (msg) => {
-    let workerId = msg[0]
-    let worker = _workerById(workerId)
+    let worker = _workerById(msg[0])
     if (worker) {
       _monitor(worker)
+      let workerDeclaredConcurrency = JSON.parse(msg[3])
+      if (worker.concurrency !== workerDeclaredConcurrency) {
+        worker.concurrency = workerDeclaredConcurrency
+        _broadcastWorkersAvailability()
+      }
     }
   }
   let _onWorkerDisconnect = (msg) => {
@@ -178,36 +192,41 @@ const Minister = (settings) => {
     if (worker) _onWorkerLost(worker)
   }
   let _onWorkerPartialResponse = (msg) => {
-    let senderId = msg[0]
-    let sender = _workerById(senderId) || _ministerById(senderId)
+    let sender = _workerById(msg[0]) || _ministerById(msg[0])
     if (sender) {
       _monitor(sender)
       let uuid = msg[3].toString()
-      let body = msg[4]
       let request = _requestByUUID(uuid)
-      if (request) request.sendPartialResponse(body)
+      if (
+        request &&
+        request.assignee === sender
+      ) request.sendPartialResponse(msg[4])
     }
   }
   let _onWorkerFinalResponse = (msg) => {
-    let senderId = msg[0]
-    let sender = _workerById(senderId) || _ministerById(senderId)
+    let sender = _workerById(msg[0]) || _ministerById(msg[0])
     if (sender) {
+      sender.assignedRequests--
       _monitor(sender)
       let uuid = msg[3].toString()
-      let body = msg[4]
       let request = _requestByUUID(uuid)
-      if (request) request.sendFinalResponse(body)
+      if (
+        request &&
+        request.assignee === sender
+      ) request.sendFinalResponse(msg[4])
     }
   }
   let _onWorkerErrorResponse = (msg) => {
-    let senderId = msg[0]
-    let sender = _workerById(senderId) || _ministerById(senderId)
+    let sender = _workerById(msg[0]) || _ministerById(msg[0])
     if (sender) {
+      sender.assignedRequests--
       _monitor(sender)
       let uuid = msg[3].toString()
-      let body = msg[4]
       let request = _requestByUUID(uuid)
-      if (request) request.sendErrorResponse(body)
+      if (
+        request &&
+        request.assignee === sender
+      ) request.sendErrorResponse(msg[4])
     }
   }
   // Minister messages
@@ -223,33 +242,35 @@ const Minister = (settings) => {
       log(`Minister ID: ${ministerId}`)
       log(`Minister latency: ${latency} milliseconds\n`)
 
-      minister = getMinisterInstance(binding ? _connectingRouter : _bindingRouter, ministerId, latency, endpoint)
+      minister = getMinisterInstance({
+        router: binding ? _connectingRouter : _bindingRouter,
+        id: ministerId,
+        latency,
+        endpoint
+      })
       _monitor(minister)
       _ministers.push(minister)
       minister.send([
         'MM',
-        MINISTERS.M_HELLO,
+        CONSTANTS.M_HELLO,
         JSON.stringify({
-          latency,
           binding: !binding,
+          latency,
           endpoint: _bindingRouter.endpoint
         })
       ])
     }
   }
   let _onMinisterWorkersAvailability = (msg) => {
-    let ministerId = msg[0]
-    let workers = JSON.parse(msg[3])
-    let minister = _ministerById(ministerId)
+    let minister = _ministerById(msg[0])
     if (minister) {
       _monitor(minister)
-      minister.workers = workers
+      minister.workers = JSON.parse(msg[3])
+      _assignRequests()
     }
   }
   let _onMinisterDisconnect = (msg) => {
-    let ministerId = msg[0]
-    let minister = _ministerById(ministerId)
-    log(`Alternatives ministers: ${msg[3]}`)
+    let minister = _ministerById(msg[0])
     if (minister) _onMinisterLost(minister)
   }
   // MinisterNotifier messages
@@ -259,10 +280,10 @@ const Minister = (settings) => {
     _bindingRouter.send([
       identity,
       'MM',
-      MINISTERS.M_HELLO,
+      CONSTANTS.M_HELLO,
       JSON.stringify({
-        latency,
         binding: true,
+        latency,
         endpoint: _bindingRouter.endpoint
       })
     ])
@@ -270,34 +291,79 @@ const Minister = (settings) => {
 
   // Routers lifecycle management
   let _bindingRouter
-  let _setupBindingRouter = () => new Promise((resolve, reject) => {
+  let _zapRouter
+  let _setupBindingRouter = () => {
     _bindingRouter = zmq.socket('router')
     _bindingRouter.linger = 1
     _bindingRouter.identity = `MM-${uuid.v4()}`
-    log('Binding Router created')
+
+    if (_settings.security) {
+      _bindingRouter.zap_domain = 'minister'
+      _bindingRouter.curve_server = 1
+      _bindingRouter.curve_secretkey = _settings.security.serverSecretKey
+      _zapRouter = zmq.socket('router')
+      _zapRouter.on('message', (...frames) => {
+        let statusCode, statusText
+
+        if (_settings.security.allowedClientKeys) {
+          let clientPublicKey = z85.encode(frames[8])
+          statusCode = ~_settings.security.allowedClientKeys.indexOf(clientPublicKey) ? '200' : '400'
+        } else {
+          statusCode = '200'
+        }
+
+        if (statusCode === '200') {
+          statusText = 'OK'
+          log('Authorizing minister connection')
+        } else {
+          statusText = 'Unauthorized public key'
+          log('Not authorizing minister connection')
+        }
+
+        _zapRouter.send([
+          frames[0],
+          frames[1],
+          frames[2],
+          frames[3],
+          new Buffer(statusCode),
+          new Buffer(statusText),
+          new Buffer(0),
+          new Buffer(0)
+        ])
+      })
+      _zapRouter.bindSync('inproc://zeromq.zap.01')
+      log('ZAP with CURVE Mechanism enabled')
+    }
 
     let bindIp = _settings.ip || '0.0.0.0'
     let osExternalIp = getOSNetworkExternalInterface()
     let bindEndpoint = `tcp://${bindIp}:${_settings.port}`
-    _bindingRouter.bind(bindEndpoint, (err) => {
-      if (err) return reject(err)
+    let routerEndpoint = _settings.ip
+      ? bindEndpoint
+      : osExternalIp && `tcp://${osExternalIp}:${_settings.port}`
 
-      let routerEndpoint = _settings.ip
-        ? bindEndpoint
-        : osExternalIp && `tcp://${osExternalIp}:${_settings.port}`
-
-      if (routerEndpoint) {
-        log(`Binding Router bound to ${routerEndpoint}`)
-        _bindingRouter.endpoint = routerEndpoint
-        return resolve()
-      }
-      _bindingRouter.unbindSync(bindEndpoint)
+    if (routerEndpoint) {
+      _bindingRouter.endpoint = routerEndpoint
+      _bindingRouter.bindSync(bindEndpoint)
+      log(`Binding Router bound to ${routerEndpoint}`)
+      return true
+    } else {
       _bindingRouter.close()
       _bindingRouter = null
-      reject(new Error('Could not determine the router endpoint'))
-    })
-  })
+      if (_zapRouter) {
+        _zapRouter.close()
+        _zapRouter = null
+      }
+      log(`Could not determine the OS external IP address, aborting...`)
+      return false
+    }
+  }
   let _tearDownBindingRouter = () => {
+    if (_zapRouter) {
+      _zapRouter.close()
+      _zapRouter = null
+      log('ZAP server destroyed')
+    }
     _unsubscribeFromBindingRouter()
     _unsubscribeFromBindingRouter = null
     _bindingRouter.close()
@@ -311,6 +377,16 @@ const Minister = (settings) => {
     _connectingRouter.linger = 1
     _connectingRouter.identity = _bindingRouter.identity
     _connectingRouter.monitor(10, 0)
+
+    if (_settings.security) {
+      _connectingRouter.curve_serverkey = _settings.security.serverPublicKey
+      let clientKeys = _settings.security.secretKey
+                          ? {public: _settings.security.publicKey, secret: _settings.security.secretKey}
+                          : zmq.curveKeypair()
+      _connectingRouter.curve_publickey = clientKeys.public
+      _connectingRouter.curve_secretkey = clientKeys.secret
+    }
+
     log('Connecting Router created')
   }
   let _tearDownConnectingRouter = () => {
@@ -384,7 +460,7 @@ const Minister = (settings) => {
   // Peers management
   let _monitor = (peer) => {
     _unmonitor(peer)
-    peer.liveness = MINISTERS.HEARTBEAT_LIVENESS
+    peer.liveness = CONSTANTS.HEARTBEAT_LIVENESS
     peer.heartbeatCheck = setInterval(() => {
       peer.liveness--
       log(`${peer.liveness} lives for ${peer.type} ${peer.id}`)
@@ -395,7 +471,7 @@ const Minister = (settings) => {
           case 'Minister': return _onMinisterLost(peer)
         }
       }
-    }, MINISTERS.HEARTBEAT_INTERVAL)
+    }, CONSTANTS.HEARTBEAT_INTERVAL)
   }
   let _unmonitor = (peer) => {
     if (peer.heartbeatCheck) {
@@ -439,7 +515,7 @@ const Minister = (settings) => {
               let notifier = zmq.socket('dealer')
               notifier.connect(endpoint)
 
-              let connectionsSubscription = _connectingRouterConnections.delay(latency * 4).subscribe(ep => {
+              let connectionsSubscription = _connectingRouterConnections.delay(latency * 5).subscribe(ep => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
                   log(`Connected to minister at ${ep}`)
@@ -447,7 +523,7 @@ const Minister = (settings) => {
                   // Notify the minister about myself
                   notifier.send([
                     'MMN',
-                    MINISTERS.MN_NEW_MINISTER_CONNECTED,
+                    CONSTANTS.MN_NEW_MINISTER_CONNECTED,
                     JSON.stringify({
                       identity: _connectingRouter.identity,
                       latency
@@ -463,19 +539,20 @@ const Minister = (settings) => {
         })
       })
   }
-  let _broadcastWorkersState = () => {
-    log(`Broadcasting workers (${_workers.length}) to ministers (${_ministers.length})`)
+  let _broadcastWorkersAvailability = () => {
+    log(`Broadcasting workers availability to ministers (${_ministers.length})`)
+    let workers = JSON.stringify(_workers.map(workerToState))
     _ministers.forEach(minister => minister.send([
       'MM',
-      MINISTERS.M_WORKERS_AVAILABILITY,
-      JSON.stringify(_workers.map(workerState))
+      CONSTANTS.M_WORKERS_AVAILABILITY,
+      workers
     ]))
   }
   let _sendDisconnectionSignals = () => {
     log('Broadcasting disconnection signal')
     let disconnectioSignal = [
       'MM',
-      MINISTERS.M_DISCONNECT,
+      CONSTANTS.M_DISCONNECT,
       JSON.stringify(_ministers.map(({endpoint}) => endpoint))
     ]
     _ministers.forEach(minister => minister.send(disconnectioSignal))
@@ -483,14 +560,21 @@ const Minister = (settings) => {
     _clients.forEach(client => client.send(disconnectioSignal))
   }
 
-  // Requests dispatching
+  // Requests assignment
   let _assignRequests = () => {
     _requestsUnassigned()
       .forEach(request => {
-        let assignee = _workerForService(request.service) || _ministerForService(request.service)
+        let worker = _workerForService(request.service)
+        let minister = _ministerForService(request.service)
+        let assignee = worker && worker.freeSlots
+                        ? worker
+                        : minister && minister.slotsForService(request.service)
+                          ? minister
+                          : null
         if (assignee) {
           assignee.send(request.frames)
           request.assignee = assignee
+          assignee.assignedRequests++
         }
       })
   }
@@ -498,47 +582,47 @@ const Minister = (settings) => {
   // Public API
   function start () {
     if (_connected || _togglingConnection) return minister
-    _togglingConnection = true
     log('Connecting...')
-    // Create the bound router
-    _setupBindingRouter()
-      .then(() => {
-        _setupConnectingRouter()
-        _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
-        _unsubscribeFromConnectingRouter = _observeRouter(_connectingRouter, false)
+    if (_setupBindingRouter()) {
+      _setupConnectingRouter()
+      _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
+      _unsubscribeFromConnectingRouter = _observeRouter(_connectingRouter, false)
 
-        _presentToMinisters()
+      // Periodically try to assign unassigned requests
+      _requestAssigningInterval = setInterval(
+        () => _assignRequests(),
+        200
+      )
+      // Periodically notify other ministers about own workers state
+      _ministersUpdateWorkersAvailabilityInterval = setInterval(
+        () => _broadcastWorkersAvailability(),
+        CONSTANTS.HEARTBEAT_INTERVAL
+      )
 
-        // Periodically try to assign unassigned requests
-        _requestAssigningInterval = setInterval(() => _assignRequests(), 500)
-        // Periodically notify other ministers about own workers state
-        _ministersWorkersUpdateInterval = setInterval(() => _broadcastWorkersState(), MINISTERS.HEARTBEAT_INTERVAL)
-
-        _togglingConnection = false
-        _connected = true
-        log('Connected')
+      _connected = true
+      log('Connected.')
+      process.nextTick(() => {
         minister.emit('connection')
+        _presentToMinisters()
       })
-      .catch(e => {
-        log(e)
-        log('Conncetion failed.')
-        _togglingConnection = false
-        minister.emit('error', e)
-      })
+    } else {
+      log('Connection failed.')
+    }
   }
   function stop () {
     if (!_connected || _togglingConnection) return minister
     _togglingConnection = true
+
     log('Disconnecting...')
 
     // Stop request assign routine
     clearInterval(_requestAssigningInterval)
     _requestAssigningInterval = null
-    // Stop notifications to other ministers about own workers state
-    clearInterval(_ministersWorkersUpdateInterval)
-    _ministersWorkersUpdateInterval = null
+    // Stop notifications to other ministers about services availability
+    clearInterval(_ministersUpdateWorkersAvailabilityInterval)
+    _ministersUpdateWorkersAvailabilityInterval = null
 
-    // Declare unavaliability
+    // Declare unavaliability to connected clients, workers, and ministers
     _sendDisconnectionSignals()
     // Stop taking messages
     _unsubscribeFromBindingRouter()
@@ -548,7 +632,15 @@ const Minister = (settings) => {
     _workers.forEach(_unmonitor)
     _ministers.forEach(_unmonitor)
 
-    let disconnectionTimeout = max(_workers.map(({latency}) => latency)) || 300
+    let farthestPeerLatency = max(
+      _clients.map(({latency}) => latency)
+      .concat(
+        _workers.map(({latency}) => latency)
+      )
+      .concat(
+        _ministers.map(({latency}) => latency)
+      )
+    ) || 1
     setTimeout(function () {
       _tearDownBindingRouter()
       _tearDownConnectingRouter()
@@ -559,7 +651,7 @@ const Minister = (settings) => {
       _connected = false
       log('Disconnected')
       minister.emit('disconnection')
-    }, disconnectionTimeout)
+    }, farthestPeerLatency * 2)
   }
 
   Object.defineProperties(minister, {
@@ -571,24 +663,51 @@ const Minister = (settings) => {
 
 const defaultSettings = {
   ip: null,
-  port: 25255,
+  port: 5555,
   ministers: []
 }
 
 const eMsg = prefixString('Minister(settings): ')
 function validateSettings (settings) {
-  let {ip, port, ministers} = settings
+  let {ip, port, ministers, security} = settings
+
+  // Ip
   if (
     ip &&
-    !isValidIPv4(ip)
-  ) throw new Error(eMsg('settings.ip should be a valid IPv4 address'))
-  if (!isInteger(port) || port < 1) throw new Error(eMsg('settings.port should be a positive integer'))
-  if (!ministers) ministers = []
-  if (!isString(ministers) && ip) throw new Error('if your ministers\'addresses are resolvable via DNS you should not set settings.ip')
+    !net.isIPv4(ip)
+  ) throw new Error(eMsg('settings.ip MUST be either `undefined` or a valid IPv4 address'))
+
+  // Port
+  if (!isInteger(port) || port < 1) throw new Error(eMsg('settings.port MUST be a positive integer'))
+
+  // Ministers
+  let ministersErrorMessage = eMsg('settings.ministers MUST be either a string, representing a hostname, or an array of 0 or more valid TCP endpoints, in the form of \'tcp://IP:port\'')
+  if (
+    !ministers ||
+    (!isString(ministers) && !isArray(ministers))
+  ) throw new Error(ministersErrorMessage)
   if (
     isArray(ministers) &&
     !every(ministers, isValidEndpoint)
-  ) throw new Error(eMsg('settings.ministers should be either a string, representing a hostname, or an array of 0 or more valid TCP endpoints, in the form of \'tcp://IP:port\''))
+  ) throw new Error(ministersErrorMessage)
+  if (isString(ministers) && ip) throw new Error(eMsg(`if your ministers\'addresses are resolvable via DNS at ${ministers} you MUST NOT set settings.ip`))
+
+  // Security
+  if (security) {
+    if (!supportingCurveSecurity()) throw new Error(eMsg('cannot setup curve security. libsodium seems to be missing.'))
+    if (!isPlainObject(security)) throw new Error(eMsg('settings.security should be either `undefined` or a plain object'))
+    if (!isValidCurveKeyPair(security.serverSecretKey, security.serverPublicKey)) throw new Error(eMsg('settings.security.serverPublicKey and settings.security.serverSecretKey MUST be a valid z85 encoded Curve25519 keypair. You can generate them through zmq.curveKeypair()'))
+    if (security.allowedClientKeys) {
+      if (
+        !isArray(security.allowedClientKeys) ||
+        !every(security.allowedClientKeys, isValidCurveKey)
+      ) throw new Error(eMsg('settings.security.allowedClientKeys MUST be either `undefined` or a list of 40 chars strings'))
+    }
+    if (
+      (security.secretKey || security.publicKey) &&
+      !isValidCurveKeyPair(security.secretKey, security.publicKey)
+    ) throw new Error(eMsg('settings.security.publicKey and settings.security.secretKey MUST be a valid z85 encoded Curve25519 keypair. You can generate them through zmq.curveKeypair()'))
+  }
 }
 
 export default Minister

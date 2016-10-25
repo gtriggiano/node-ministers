@@ -1,13 +1,13 @@
 import Client from './Client'
 import Minister from './Minister'
 import Worker from './Worker'
-import MINISTERS from './MINISTERS'
+import CONSTANTS from './CONSTANTS'
 
 const lib = {
   Client,
   Minister,
   Worker,
-  ...MINISTERS
+  ...CONSTANTS
 }
 
 export default lib
