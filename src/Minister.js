@@ -513,6 +513,14 @@ const Minister = (settings) => {
               _connectingRouter.connect(endpoint)
               //  Establish a notifier connection
               let notifier = zmq.socket('dealer')
+              if (_settings.security) {
+                notifier.curve_serverkey = _settings.security.serverPublicKey
+                let clientKeys = _settings.security.secretKey
+                                    ? {public: _settings.security.publicKey, secret: _settings.security.secretKey}
+                                    : zmq.curveKeypair()
+                notifier.curve_publickey = clientKeys.public
+                notifier.curve_secretkey = clientKeys.secret
+              }
               notifier.connect(endpoint)
 
               let connectionsSubscription = _connectingRouterConnections.delay(latency * 5).subscribe(ep => {
