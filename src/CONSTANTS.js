@@ -1,61 +1,28 @@
-const CLIENT = 'MC'
-const WORKER = 'MW'
-const MINISTER = 'MM'
-const MINISTER_NOTIFIER = 'MMN'
+export const CLIENT = 'MC'
+export const WORKER = 'MW'
+export const MINISTER = 'MM'
+export const MINISTER_NOTIFIER = 'MMN'
 
-const C_HELLO = '1'
-const C_HEARTBEAT = '2'
-const C_DISCONNECT = '3'
-const C_REQUEST = '4'
+export const C_HELLO = '1'
+export const C_HEARTBEAT = '2'
+export const C_DISCONNECT = '3'
+export const C_REQUEST = '4'
 
-const W_READY = '1'
-const W_HEARTBEAT = '2'
-const W_DISCONNECT = '3'
-const W_PARTIAL_RESPONSE = '4'
-const W_FINAL_RESPONSE = '5'
-const W_ERROR_RESPONSE = '6'
+export const W_READY = '1'
+export const W_HEARTBEAT = '2'
+export const W_DISCONNECT = '3'
+export const W_PARTIAL_RESPONSE = '4'
+export const W_FINAL_RESPONSE = '5'
+export const W_ERROR_RESPONSE = '6'
 
-const M_HELLO = '1'
-const M_WORKERS_AVAILABILITY = '2'
-const M_DISCONNECT = '3'
+export const M_HELLO = '1'
+export const M_WORKERS_AVAILABILITY = '2'
+export const M_DISCONNECT = '3'
 
-const MN_NEW_MINISTER_CONNECTED = '1'
+export const MN_NEW_MINISTER_CONNECTED = '1'
 
-const HEARTBEAT_LIVENESS = 3
-const HEARTBEAT_INTERVAL = 1000
+export const HEARTBEAT_LIVENESS = 3
+export const HEARTBEAT_INTERVAL = 1000
 
-const RESPONSE_TIMEOUT = 'RTO'
-const RESPONSE_LOST_WORKER = 'RLW'
-
-const CONSTANTS = {
-  CLIENT,
-  WORKER,
-  MINISTER,
-  MINISTER_NOTIFIER,
-
-  C_HELLO,
-  C_HEARTBEAT,
-  C_DISCONNECT,
-  C_REQUEST,
-
-  W_READY,
-  W_HEARTBEAT,
-  W_DISCONNECT,
-  W_PARTIAL_RESPONSE,
-  W_FINAL_RESPONSE,
-  W_ERROR_RESPONSE,
-
-  M_HELLO,
-  M_WORKERS_AVAILABILITY,
-  M_DISCONNECT,
-
-  MN_NEW_MINISTER_CONNECTED,
-
-  HEARTBEAT_LIVENESS,
-  HEARTBEAT_INTERVAL,
-
-  RESPONSE_TIMEOUT,
-  RESPONSE_LOST_WORKER
-}
-
-export default CONSTANTS
+export const RESPONSE_TIMEOUT = 'RTO'
+export const RESPONSE_LOST_WORKER = 'RLW'
