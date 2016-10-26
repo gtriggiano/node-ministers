@@ -18,10 +18,20 @@ export let isWorkerFinalResponse = msg => msg[2] === CONSTANTS.W_FINAL_RESPONSE
 export let isWorkerErrorResponse = msg => msg[2] === CONSTANTS.W_ERROR_RESPONSE
 
 export let isMinisterHello = msg => msg[2] === CONSTANTS.M_HELLO
+export let isMinisterHeartbeat = msg => msg[2] === CONSTANTS.M_HEARTBEAT
 export let isMinisterWorkersAvailability = msg => msg[2] === CONSTANTS.M_WORKERS_AVAILABILITY
 export let isMinisterDisconnect = msg => msg[2] === CONSTANTS.M_DISCONNECT
 
 export let isMinisterNotifierNewMinisterConnected = msg => msg[2] === CONSTANTS.MN_NEW_MINISTER_CONNECTED
+
+export let clientHelloMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_HELLO
+]
+export let clientDisconnectionMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_DISCONNECT
+]
 
 export let ministerHelloMessage = (infos) => [
   CONSTANTS.MINISTER,

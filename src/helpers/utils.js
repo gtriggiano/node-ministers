@@ -6,14 +6,14 @@ import zmq from 'zmq'
 import { curry, isInteger, isString } from 'lodash'
 
 // Exported
-const getOSNetworkExternalInterface = () => {
+export let getOSNetworkExternalInterface = () => {
   let ifaces = os.networkInterfaces()
   return Object.keys(ifaces).reduce((ips, ifaceName) => {
     return ips.concat(ifaces[ifaceName].filter(address => !address.internal && address.family === 'IPv4'))
   }, []).map(({address}) => address)[0] || undefined
 }
 
-const isValidEndpoint = (endpoint) => {
+export let isValidEndpoint = (endpoint) => {
   if (!isString(endpoint) || !endpoint) return false
 
   let [ transport, address ] = endpoint.split('://')
@@ -28,15 +28,22 @@ const isValidEndpoint = (endpoint) => {
           port > 0
 }
 
-const isValidCurveKey = (key) => isString(key) && key.length === 40
+export let isValidHostAndPort = (str) => {
+  if (!str || !isString(str)) return false
+  let [host, port] = str.split(':')
+  port = parseInt(port, 10)
+  return host && isInteger(port) && port > 0
+}
 
-const isValidCurveKeyPair = (secretKey, publicKey) => {
+export let isValidCurveKey = (key) => isString(key) && key.length === 40
+
+export let isValidCurveKeyPair = (secretKey, publicKey) => {
   if (!isValidCurveKey(secretKey) || !isValidCurveKey(publicKey)) return false
   var secretKey32 = z85.decode(secretKey)
   return publicKey === z85.encode(nacl.box.keyPair.fromSecretKey(secretKey32).publicKey)
 }
 
-const supportingCurveSecurity = () => {
+export let supportingCurveSecurity = () => {
   let socket = zmq.socket('router')
   try {
     socket.curve_server = 0
@@ -48,9 +55,9 @@ const supportingCurveSecurity = () => {
   }
 }
 
-const prefixString = curry((prefix, str) => `${prefix}${str}`)
+export let prefixString = curry((prefix, str) => `${prefix}${str}`)
 
-const parseEndpoint = (endpoint) => {
+export let parseEndpoint = (endpoint) => {
   let [ transport, address ] = endpoint.split('://')
   let [ ip, port ] = address.split(':')
   return {
@@ -58,14 +65,4 @@ const parseEndpoint = (endpoint) => {
     ip,
     port: parseInt(port, 10)
   }
-}
-
-export {
-  getOSNetworkExternalInterface,
-  isValidEndpoint,
-  isValidCurveKey,
-  isValidCurveKeyPair,
-  supportingCurveSecurity,
-  prefixString,
-  parseEndpoint
 }

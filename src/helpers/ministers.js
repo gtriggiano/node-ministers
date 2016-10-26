@@ -37,7 +37,7 @@ const ministerDoesService = curry((service, minister) =>
 )
 
 // Exported
-const getMinisterInstance = ({router, id, latency, endpoint}) => {
+export let getMinisterInstance = ({router, id, latency, endpoint}) => {
   let minister = {
     type: 'Minister',
     id,
@@ -55,9 +55,9 @@ const getMinisterInstance = ({router, id, latency, endpoint}) => {
   return minister
 }
 
-const findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
+export let findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
 
-const findMinisterForService = curry((ministers, service) =>
+export let findMinisterForService = curry((ministers, service) =>
   ministers.filter(ministerDoesService(service)).sort((m1, m2) => {
     let slots1 = m1.slotsForService(service)
     let slots2 = m2.slotsForService(service)
@@ -74,13 +74,13 @@ const findMinisterForService = curry((ministers, service) =>
   })[0]
 )
 
-const discoverOtherMinistersEndpoints = ({host, port, ownEndpoint}) =>
+export let discoverMinistersEndpoints = ({host, port, excludedEndpoint}) =>
   discoverMinistersIPsByHost(host)
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
-  .then(filterEndpointsDifferentFrom(ownEndpoint))
+  .then(filterEndpointsDifferentFrom(excludedEndpoint))
 
-const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
+export let getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let { ip, port } = parseEndpoint(ministerEndpoint)
   tcpPing.probe(ip, port, (err, available) => {
     if (err) return reject(err)
@@ -92,11 +92,3 @@ const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) =
     })
   })
 })
-
-export {
-  getMinisterInstance,
-  findMinisterById,
-  findMinisterForService,
-  discoverOtherMinistersEndpoints,
-  getMinisterLatency
-}

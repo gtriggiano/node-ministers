@@ -1,3 +1,4 @@
+import EventEmitter from 'eventemitter3'
 import { curry, isInteger } from 'lodash'
 import compose from 'lodash/fp/compose'
 import eqFp from 'lodash/fp/eq'
@@ -9,7 +10,7 @@ import CONSTANTS from '../CONSTANTS'
 
 // Internals
 const requestIsNotAssigned = compose(negateFp, getFp('assignee'))
-// const requestIsAssigned = compose(negateFp, requestIsNotAssigned)
+const requestIsAssigned = compose(negateFp, requestIsNotAssigned)
 const getStakeholderType = compose(getFp('type'), getFp('stakeholder'))
 const getAssigneeType = compose(getFp('type'), getFp('assignee'))
 const stakeholderIsClient = compose(isEqualFp('Client'), getStakeholderType)
@@ -19,7 +20,7 @@ const assigneeIsMinister = compose(isEqualFp('Minister'), getAssigneeType)
 const requestHasUUID = (uuid) => compose(isEqualFp(uuid), getFp('uuid'))
 
 // Exported
-const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames, onFinished}) => {
+export let getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames, onFinished}) => {
   let _accomplished = false
   let _failed = false
   let _timedout = false
@@ -78,23 +79,19 @@ const getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, frames
     }}
   })
 }
-const findRequestsByClientStakeholder = curry((requests, client) =>
-  requests.filter(stakeholderIsClient).filter(compose(eqFp(client.id), getFp('id'), getFp('stakeholder'))))
-const findRequestsByMinisterStakeholder = curry((requests, minister) =>
-  requests.filter(stakeholderIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('stakeholder'))))
-const findRequestsByWorkerAssignee = curry((requests, worker) =>
-  requests.filter(assigneeIsWorker).filter(compose(eqFp(worker.id), getFp('id'), getFp('assignee'))))
-const findRequestsByMinisterAssignee = curry((requests, minister) =>
-  requests.filter(assigneeIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('assignee'))))
-const findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
-const findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
+export let getClientRequestInstance = ({service, body, options}) => {
+  let request = new EventEmitter()
 
-export {
-  getMinisterRequestInstance,
-  findUnassignedRequests,
-  findRequestsByClientStakeholder,
-  findRequestsByMinisterStakeholder,
-  findRequestsByWorkerAssignee,
-  findRequestsByMinisterAssignee,
-  findRequestByUUID
+  return request
 }
+export let findRequestsByClientStakeholder = curry((requests, client) =>
+  requests.filter(stakeholderIsClient).filter(compose(eqFp(client.id), getFp('id'), getFp('stakeholder'))))
+export let findRequestsByMinisterStakeholder = curry((requests, minister) =>
+  requests.filter(stakeholderIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('stakeholder'))))
+export let findRequestsByWorkerAssignee = curry((requests, worker) =>
+  requests.filter(assigneeIsWorker).filter(compose(eqFp(worker.id), getFp('id'), getFp('assignee'))))
+export let findRequestsByMinisterAssignee = curry((requests, minister) =>
+  requests.filter(assigneeIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('assignee'))))
+export let findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
+export let findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
+export let findAssignedRequests = (requests) => () => requests.filter(requestIsAssigned)

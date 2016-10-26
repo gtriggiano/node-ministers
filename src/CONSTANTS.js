@@ -16,8 +16,9 @@ export const W_FINAL_RESPONSE = '5'
 export const W_ERROR_RESPONSE = '6'
 
 export const M_HELLO = '1'
-export const M_WORKERS_AVAILABILITY = '2'
-export const M_DISCONNECT = '3'
+export const M_HEARTBEAT = '2'
+export const M_WORKERS_AVAILABILITY = '3'
+export const M_DISCONNECT = '4'
 
 export const MN_NEW_MINISTER_CONNECTED = '1'
 

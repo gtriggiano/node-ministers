@@ -68,7 +68,7 @@ import {
   getMinisterInstance,
   findMinisterById,
   findMinisterForService,
-  discoverOtherMinistersEndpoints,
+  discoverMinistersEndpoints,
   getMinisterLatency
 } from './helpers/ministers'
 
@@ -516,10 +516,10 @@ const Minister = (settings) => {
   let _presentToMinisters = () => {
     let getMinistersEndpoints
     if (isString(_settings.ministers)) {
-      getMinistersEndpoints = discoverOtherMinistersEndpoints({
+      getMinistersEndpoints = discoverMinistersEndpoints({
         host: _settings.ministers,
         port: settings.port,
-        ownEndpoint: _bindingRouter.endpoint
+        excludedEndpoint: _bindingRouter.endpoint
       })
     } else {
       getMinistersEndpoints = Promise.resolve(_settings.ministers)
@@ -603,7 +603,7 @@ const Minister = (settings) => {
   // Public API
   function start () {
     if (_connected || _togglingConnection) return minister
-    log('Connecting...')
+    log('Starting...')
     if (_setupBindingRouter()) {
       _setupConnectingRouter()
       _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
@@ -621,13 +621,13 @@ const Minister = (settings) => {
       )
 
       _connected = true
-      log('Connected.')
+      log('Started.')
       Object.defineProperty(minister, 'id', {
         configurable: true,
         value: _bindingRouter.identity
       })
       process.nextTick(() => {
-        minister.emit('connection')
+        minister.emit('start')
         _presentToMinisters()
       })
     } else {
@@ -639,7 +639,7 @@ const Minister = (settings) => {
     if (!_connected || _togglingConnection) return minister
     _togglingConnection = true
 
-    log('Disconnecting...')
+    log('Stopping...')
 
     // Stop request assign routine
     clearInterval(_requestAssigningInterval)
@@ -675,9 +675,9 @@ const Minister = (settings) => {
       _ministers.length = 0
       _togglingConnection = false
       _connected = false
-      log('Disconnected')
+      log('Stopped.')
       delete minister.id
-      minister.emit('disconnection')
+      minister.emit('stop')
     }, farthestPeerLatency * 2)
     return minister
   }
