@@ -8,10 +8,6 @@ import Promise from 'bluebird'
 import EventEmitter from 'eventemitter3'
 import { isString, isInteger, isArray, isPlainObject, each, every, pull, max } from 'lodash'
 
-/*
-  Helpers
- */
-
 // Utils
 import {
   getOSNetworkExternalInterface,
@@ -637,6 +633,7 @@ const Minister = (settings) => {
     } else {
       log('Connection failed.')
     }
+    return minister
   }
   function stop () {
     if (!_connected || _togglingConnection) return minister
@@ -682,6 +679,7 @@ const Minister = (settings) => {
       delete minister.id
       minister.emit('disconnection')
     }, farthestPeerLatency * 2)
+    return minister
   }
 
   Object.defineProperties(minister, {
