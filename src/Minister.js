@@ -136,6 +136,7 @@ const Minister = (settings) => {
       })
       _monitor(client)
       _clients.push(client)
+      minister.emit('client:connection', client.id)
     }
   }
   let _onClientHeartbeat = (msg) => {
@@ -182,6 +183,7 @@ const Minister = (settings) => {
       _monitor(worker)
       _workers.push(worker)
       _broadcastWorkersAvailability()
+      minister.emit('worker:connection', worker.id, worker.service)
     }
   }
   let _onWorkerHeartbeat = (msg) => {
@@ -243,27 +245,28 @@ const Minister = (settings) => {
     let ministerId = msg[0]
     let {binding, latency, endpoint} = JSON.parse(msg[3])
 
-    let minister = _ministerById(ministerId)
-    if (!minister) {
+    let m = _ministerById(ministerId)
+    if (!m) {
       if (binding) log(`Communicating with minister bound at ${endpoint}`)
       if (!binding) log(`Communicating with connected minister`)
 
       log(`Minister ID: ${ministerId}`)
       log(`Minister latency: ${latency} milliseconds\n`)
 
-      minister = getMinisterInstance({
+      m = getMinisterInstance({
         router: binding ? _connectingRouter : _bindingRouter,
         id: ministerId,
         latency,
         endpoint
       })
-      _monitor(minister)
-      _ministers.push(minister)
-      minister.send(ministerHelloMessage(JSON.stringify({
+      _monitor(m)
+      _ministers.push(m)
+      m.send(ministerHelloMessage(JSON.stringify({
         binding: !binding,
         latency,
         endpoint: _bindingRouter.endpoint
       })))
+      minister.emit('minister:connection', m.id, m.service)
     }
   }
   let _onMinisterWorkersAvailability = (msg) => {
@@ -282,11 +285,12 @@ const Minister = (settings) => {
   let _onNewMinisterConnected = (msg) => {
     let { identity, latency } = JSON.parse(msg[3])
     log(`Received notification of a new connected minister (${identity}). Sending HELLO message\n`)
-    _bindingRouter.send(ministerHelloMessage(JSON.stringify({
+    let infos = JSON.stringify({
       binding: true,
       latency,
       endpoint: _bindingRouter.endpoint
-    })))
+    })
+    _bindingRouter.send([identity, ...ministerHelloMessage(infos)])
   }
 
   // Routers lifecycle management
@@ -487,6 +491,7 @@ const Minister = (settings) => {
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pull(_requests, ...pendingReceivedRequests)
     pull(_clients, client)
+    minister.emit('client:disconnection', client.id)
   }
   let _onWorkerLost = (worker) => {
     _unmonitor(worker)
@@ -496,19 +501,21 @@ const Minister = (settings) => {
     pendingAssignedRequests.forEach(request => request.lostWorker())
     pull(_requests, ...pendingAssignedRequests)
     pull(_workers, worker)
+    minister.emit('worker:disconnection', worker.id, worker.service)
   }
-  let _onMinisterLost = (minister) => {
-    _unmonitor(minister)
-    let pendingReceivedRequests = _requestsFromMinister(minister)
-    let pendingAssignedRequests = _requestsAssignedToMinister(minister)
-    log(`Lost connection with minister ${minister.id}
+  let _onMinisterLost = (m) => {
+    _unmonitor(m)
+    let pendingReceivedRequests = _requestsFromMinister(m)
+    let pendingAssignedRequests = _requestsAssignedToMinister(m)
+    log(`Lost connection with minister ${m.id}
       Discarding ${pendingReceivedRequests.length} received requests.
       Discarding ${pendingAssignedRequests.length} assigned requests.`)
 
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pendingAssignedRequests.forEach(request => request.lostWorker())
     pull(_requests, ...pendingReceivedRequests, ...pendingAssignedRequests)
-    pull(_ministers, minister)
+    pull(_ministers, m)
+    minister.emit('minister:disconnection', m.id, m.endpoint)
   }
   let _presentToMinisters = () => {
     let getMinistersEndpoints
@@ -564,12 +571,12 @@ const Minister = (settings) => {
       })
   }
   let _broadcastWorkersAvailability = () => {
-    log(`Broadcasting workers availability to ministers (${_ministers.length})`)
+    log(`Broadcasting workers availability to ${_ministers.length} ministers`)
     let workers = JSON.stringify(_workers.map(workerToState))
     _ministers.forEach(minister => minister.send(ministerWorkersAvailabilityMessage(workers)))
   }
-  let _sendDisconnectionMessages = () => {
-    log('Broadcasting disconnection signal')
+  let _broadcastDisconnectionMessage = () => {
+    log('Broadcasting disconnection message')
     let disconnectionMessage = ministerDisconnectionMessage(JSON.stringify(
       _ministers.map(({endpoint}) => endpoint))
     )
@@ -619,6 +626,10 @@ const Minister = (settings) => {
 
       _connected = true
       log('Connected.')
+      Object.defineProperty(minister, 'id', {
+        configurable: true,
+        value: _bindingRouter.identity
+      })
       process.nextTick(() => {
         minister.emit('connection')
         _presentToMinisters()
@@ -641,7 +652,7 @@ const Minister = (settings) => {
     _ministersUpdateWorkersAvailabilityInterval = null
 
     // Declare unavaliability to connected clients, workers, and ministers
-    _sendDisconnectionMessages()
+    _broadcastDisconnectionMessage()
     // Stop taking messages
     _unsubscribeFromBindingRouter()
     _unsubscribeFromConnectingRouter()
@@ -668,6 +679,7 @@ const Minister = (settings) => {
       _togglingConnection = false
       _connected = false
       log('Disconnected')
+      delete minister.id
       minister.emit('disconnection')
     }, farthestPeerLatency * 2)
   }
