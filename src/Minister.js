@@ -44,9 +44,10 @@ import {
   isMinisterNotifierNewMinisterConnected,
 
   ministerHelloMessage,
-  ministerConnectedMessage,
   ministerWorkersAvailabilityMessage,
-  ministerDisconnectionMessage
+  ministerDisconnectMessage,
+
+  notifierNewMinisterConnectedMessage
 } from './helpers/messages'
 
 // Clients
@@ -552,10 +553,11 @@ const Minister = (settings) => {
                   log(`Connected to minister at ${ep}`)
                   log(`Presenting myself (${_connectingRouter.identity}) through notifier\n`)
                   // Notify the minister about myself
-                  notifier.send(ministerConnectedMessage(JSON.stringify({
+                  let infos = JSON.stringify({
                     identity: _connectingRouter.identity,
                     latency
-                  })))
+                  })
+                  notifier.send(notifierNewMinisterConnectedMessage(infos))
                   notifier.close()
                 }
               })
@@ -573,7 +575,7 @@ const Minister = (settings) => {
   }
   let _broadcastDisconnectionMessage = () => {
     log('Broadcasting disconnection message')
-    let disconnectionMessage = ministerDisconnectionMessage(JSON.stringify(
+    let disconnectionMessage = ministerDisconnectMessage(JSON.stringify(
       _ministers.map(({endpoint}) => endpoint))
     )
     _ministers.forEach(minister => minister.send(disconnectionMessage))
@@ -718,7 +720,7 @@ function validateSettings (settings) {
     isArray(ministers) &&
     !every(ministers, isValidEndpoint)
   ) throw new Error(ministersErrorMessage)
-  if (isString(ministers) && ip) throw new Error(eMsg(`if your ministers\'addresses are resolvable via DNS at ${ministers} you MUST NOT set settings.ip`))
+  if (isString(ministers) && ip) throw new Error(eMsg(`if your ministers'addresses are resolvable via DNS at ${ministers} you MUST NOT set settings.ip`))
 
   // Security
   if (security) {
