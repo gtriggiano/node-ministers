@@ -28,9 +28,54 @@ export let clientHelloMessage = () => [
   CONSTANTS.CLIENT,
   CONSTANTS.C_HELLO
 ]
-export let clientDisconnectionMessage = () => [
+export let clientHeartbeatMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_HEARTBEAT
+]
+export let clientDisconnectMessage = () => [
   CONSTANTS.CLIENT,
   CONSTANTS.C_DISCONNECT
+]
+export let clientRequestMessage = (reqUUID, service, options, body) => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_REQUEST,
+  reqUUID,
+  service,
+  options,
+  body
+]
+
+export let workerReadyMessage = (infos) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_READY,
+  infos
+]
+export let workerHeartbeatMessage = (concurrency) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_HEARTBEAT,
+  concurrency
+]
+export let workerDisconnectMessage = () => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_DISCONNECT
+]
+export let workerPartialResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_PARTIAL_RESPONSE,
+  reqUUID,
+  body
+]
+export let workerFinalResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_FINAL_RESPONSE,
+  reqUUID,
+  body
+]
+export let workerErrorResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_ERROR_RESPONSE,
+  reqUUID,
+  body
 ]
 
 export let ministerHelloMessage = (infos) => [
@@ -38,18 +83,23 @@ export let ministerHelloMessage = (infos) => [
   CONSTANTS.M_HELLO,
   infos
 ]
-export let ministerConnectedMessage = (infos) => [
-  CONSTANTS.MINISTER_NOTIFIER,
-  CONSTANTS.MN_NEW_MINISTER_CONNECTED,
-  infos
+export let ministerHeartbeatMessage = () => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_HEARTBEAT
 ]
 export let ministerWorkersAvailabilityMessage = (workers) => [
   CONSTANTS.MINISTER,
   CONSTANTS.M_WORKERS_AVAILABILITY,
   workers
 ]
-export let ministerDisconnectionMessage = (altentativeMinistersEndpoints) => [
+export let ministerDisconnectMessage = (altentativeMinistersEndpoints) => [
   CONSTANTS.MINISTER,
   CONSTANTS.M_DISCONNECT,
   altentativeMinistersEndpoints
+]
+
+export let notifierNewMinisterConnectedMessage = (infos) => [
+  CONSTANTS.MINISTER_NOTIFIER,
+  CONSTANTS.MN_NEW_MINISTER_CONNECTED,
+  infos
 ]
