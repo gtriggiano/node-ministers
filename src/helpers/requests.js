@@ -18,8 +18,8 @@ import {
 } from './messages'
 
 // Internals
-const requestIsNotAssigned = compose(negateFp, getFp('assignee'))
-const requestIsAssigned = compose(negateFp, requestIsNotAssigned)
+const requestIsNotAssigned = negateFp(getFp('assignee'))
+const requestIsAssigned = negateFp(requestIsNotAssigned)
 const getStakeholderType = compose(getFp('type'), getFp('stakeholder'))
 const getAssigneeType = compose(getFp('type'), getFp('assignee'))
 const stakeholderIsClient = compose(isEqualFp('Client'), getStakeholderType)

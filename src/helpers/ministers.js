@@ -22,7 +22,7 @@ const concatPortToIPs = curry((port, ips) => ips.map(ip => `${ip}:${port}`))
 const prependTransportToAddresses = curry((transport, addresses) => addresses.map(address => `${transport}://${address}`))
 
 const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
-  dns.lookup(host, {family: 4, all: false}, (err, addresses) => {
+  dns.lookup(host, {family: 4, all: true}, (err, addresses) => {
     if (err) return reject(err)
     resolve(addresses.map(({address}) => address))
   })
@@ -30,7 +30,7 @@ const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
 
 const ministerHasId = (ministerId) => compose(isEqualFp(ministerId), getFp('id'))
 
-const filterEndpointsDifferentFrom = (endpoint) => filterFp(compose(negateFp, isEqualFp(endpoint)))
+const filterEndpointsDifferentFrom = (endpoint) => filterFp(negateFp(isEqualFp(endpoint)))
 
 const ministerDoesService = curry((service, minister) =>
   !!~minister.workers.map(({service}) => service).indexOf(service)
@@ -79,6 +79,7 @@ export let discoverMinistersEndpoints = ({host, port, excludedEndpoint}) =>
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
   .then(filterEndpointsDifferentFrom(excludedEndpoint))
+  .catch(() => [])
 
 export let getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let { ip, port } = parseEndpoint(ministerEndpoint)
