@@ -6,7 +6,16 @@ import isEqualFp from 'lodash/fp/isEqual'
 import negateFp from 'lodash/fp/negate'
 import getFp from 'lodash/fp/get'
 
-import CONSTANTS from '../CONSTANTS'
+import {
+  RESPONSE_TIMEOUT,
+  RESPONSE_LOST_WORKER
+} from '../CONSTANTS'
+
+import {
+  workerPartialResponseMessage,
+  workerFinalResponseMessage,
+  workerErrorResponseMessage
+} from './messages'
 
 // Internals
 const requestIsNotAssigned = compose(negateFp, getFp('assignee'))
@@ -33,7 +42,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, f
 
   if (isInteger(timeout) && timeout > 0) {
     _timeout = setTimeout(() => {
-      request.sendErrorResponse(CONSTANTS.RESPONSE_TIMEOUT)
+      request.sendErrorResponse(RESPONSE_TIMEOUT)
       _timedout = true
     }, timeout)
   }
@@ -54,12 +63,12 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, f
     lostWorker: {value: () => {
       if (_lostWorker) return
       _lostWorker = true
-      request.sendErrorResponse(CONSTANTS.RESPONSE_LOST_WORKER)
+      request.sendErrorResponse(RESPONSE_LOST_WORKER)
     }},
     sendPartialResponse: {value: (body) => {
       if (_finished) return
       clearTimeout(_timeout)
-      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_PARTIAL_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(workerPartialResponseMessage(uuid, body))
     }},
     sendFinalResponse: {value: (body) => {
       if (_finished) return
@@ -67,7 +76,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, f
       _finished = true
       clearTimeout(_timeout)
       onFinished()
-      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_FINAL_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(workerFinalResponseMessage(uuid, body))
     }},
     sendErrorResponse: {value: (body) => {
       if (_finished) return
@@ -75,7 +84,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, timeout, f
       _finished = true
       clearTimeout(_timeout)
       onFinished()
-      _lostStakeholder || stakeholder.send(['MW', CONSTANTS.W_ERROR_RESPONSE, uuid, body])
+      _lostStakeholder || stakeholder.send(workerErrorResponseMessage(uuid, body))
     }}
   })
 }
