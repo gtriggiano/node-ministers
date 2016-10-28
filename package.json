@@ -38,6 +38,7 @@
     "debug": "^2.2.0",
     "eventemitter3": "^2.0.2",
     "lodash": "^4.16.4",
+    "readable-stream": "^2.1.5",
     "rxjs": "^5.0.0-rc.1",
     "tcp-ping": "^0.1.1",
     "tweetnacl": "^0.14.3",

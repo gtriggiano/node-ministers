@@ -1,9 +1,9 @@
-import debug from 'debug'
+import D from 'debug'
 import zmq from 'zmq'
 import Rx from 'rxjs'
 import uuid from 'uuid'
 import EventEmitter from 'eventemitter3'
-import { isString, isPlainObject, pull, compact, head, each } from 'lodash'
+import { isPlainObject, pull, without, compact, head, last, each, noop } from 'lodash'
 import sortByFp from 'lodash/fp/sortBy'
 import getFp from 'lodash/fp/get'
 
@@ -28,6 +28,7 @@ import {
   isMinisterDisconnect,
 
   clientHelloMessage,
+  clientHeartbeatMessage,
   clientDisconnectionMessage
 } from './helpers/messages'
 
@@ -44,56 +45,69 @@ import {
   findUnassignedRequests
 } from './helpers/requests'
 
+// Constants
+import {
+  HEARTBEAT_LIVENESS,
+  HEARTBEAT_INTERVAL
+} from './CONSTANTS'
+
 const Client = (settings) => {
-  let log = debug('ministers:client')
+  let debug = D('ministers:client')
   let client = new EventEmitter()
 
   let _settings = {...defaultSettings, ...settings}
   validateSettings(_settings)
 
   // Private API
+  // Client state
   let _running = false
-  let _starting = false
-  let _stopping = false
-  let _connected = false
 
-  let _ministers = _settings.dnsMinister ? _settings.minister : [_settings.minister]
-  let _lastMinisterEndpoint
-
+  // Requests
   let _requests = []
   let _requestByUUID = findRequestByUUID(_requests)
   let _requestsUnassigned = findUnassignedRequests(_requests)
+  let _requestsWaitingResponse = findWaitingResponseRequests(_requests)
+  let _requestsStreamingResponse = findStreamingResponseRequests(_requests)
 
   // Worker messages
   let _onWorkerPartialResponse = (msg) => {
+    _monitorConnection()
     let uuid = msg[2].toString()
     let request = _requestByUUID(uuid)
-    if (request) request.givePartialResponse(msg[3])
+    if (request) request.emit('data')
   }
   let _onWorkerFinalResponse = (msg) => {
+    _monitorConnection()
     let uuid = msg[2].toString()
     let request = _requestByUUID(uuid)
     if (request) request.giveFinalResponse(msg[3])
   }
   let _onWorkerErrorResponse = (msg) => {
+    _monitorConnection()
     let uuid = msg[2].toString()
     let request = _requestByUUID(uuid)
     if (request) request.giveErrorResponse(msg[3])
   }
   // Minister messages
-  let _onMinisterHeartbeat = () => {}
-  let _onMinisterDisconnect = () => {
-    _onMinisterLost()
+  let _onMinisterHeartbeat = () => {
+    if (!_running) return
+    if (!_connected) _onConnectionSuccess()
+    _monitorConnection()
+  }
+  let _onMinisterDisconnect = (msg) => {
+    _knownEndpoints = JSON.parse(msg[2])
+    _onConnectionEnd()
+    _attemptConnection()
   }
 
   // Dealer lifecycle management
   let _dealer
-  let _unsubscribeFromDealer
+  let _unsubscribeFromDealer = noop
   let _setupDealer = () => {
+    if (_dealer) _tearDownDealer()
     _dealer = zmq.socket('dealer')
     _dealer.linger = 1
     _dealer.identity = `MC-${uuid.v4()}`
-    _dealer.monitor(10, 0)
 
     if (_settings.security) {
       _dealer.curve_serverkey = _settings.security.serverPublicKey
@@ -103,16 +117,16 @@ const Client = (settings) => {
       _dealer.curve_publickey = clientKeys.public
       _dealer.curve_secretkey = clientKeys.secret
     }
-    log('Dealer created')
+
+    debug('Dealer created')
   }
   let _tearDownDealer = () => {
-    _dealer.unmonitor()
+    if (!_dealer) return
     _dealer.close()
     _dealer = null
-    _lastMinisterEndpoint = null
-    log('Dealer destroyed')
+    debug('Dealer destroyed')
   }
-  let _observeDealer = () => {
+  let _subscribeToDealer = () => {
     // Collect a map of subscriptions
     let subscriptions = {}
 
@@ -136,57 +150,138 @@ const Client = (settings) => {
       .filter(isMinisterHeartbeat).subscribe(_onMinisterHeartbeat)
     subscriptions.ministerDisconnect = ministerMessages.filter(isMinisterDisconnect).subscribe(_onMinisterDisconnect)
 
-    let unsubscribe = () => each(subscriptions, subscription => subscription.unsubscribe())
-    return unsubscribe
-  }
-  let _attemptConnectionToMinister = () => {
-    _setupDealer()
-    let getMinistersEndpoints
-    if (isString(_ministers)) {
-      let [ host, port ] = _ministers.split(':')
-      getMinistersEndpoints = discoverMinistersEndpoints({
-        host,
-        port,
-        excludedEndpoint: _lastMinisterEndpoint
-      })
-    } else {
-      getMinistersEndpoints = Promise.resolve(_ministers)
+    if (_unsubscribeFromDealer) _unsubscribeFromDealer()
+    _unsubscribeFromDealer = () => {
+      each(subscriptions, subscription => subscription.unsubscribe())
+      _unsubscribeFromDealer = noop
     }
+  }
 
-    getMinistersEndpoints
-      .then(endpoints =>
-        Promise.all(
-          endpoints.map(endpoint => getMinisterLatency(endpoint)
+  // Connection management
+  let _connected = false
+  let _lastConnectedEndpoint
+  let _dialedEndpoints = []
+  let _knownEndpoints = _settings.dnsEndpoint ? [] : [_settings.endpoint]
+  let _getMinistersEndpoints = () => {
+    if (!_settings.dnsEndpoint) return Promise.resolve()
+    let [ host, port ] = _settings.endpoint.split(':')
+    return discoverMinistersEndpoints({
+      host,
+      port,
+      excludedEndpoint: _lastConnectedEndpoint
+    })
+    .then(endpoints => _knownEndpoints = endpoints)
+  }
+  let _attemptConnection = () => {
+    if (!_running) {
+      _dialedEndpoints = []
+      return debug('Connection attempt blocked because client is not running')
+    }
+    let attemptNo = _dialedEndpoints.length + 1
+
+    _getMinistersEndpoints()
+      .then(() => Promise.all(
+        without(_knownEndpoints, ..._dialedEndpoints)
+        .map(endpoint =>
+          getMinisterLatency(endpoint)
             .then(latency => ({endpoint, latency}))
-            .catch(() => false)
-          )
-        ).then(compact)
-      )
-      .then(sortByFp(getFp('latency'))).then(head)
-      .then(({endpoint}) => {
-        _lastMinisterEndpoint = endpoint
-        _dealer.connect(endpoint)
-        _dealer.once('connect', _onMinisterConnection)
-        setTimeout(() => {
-          if (_connected) return
-          _tearDownDealer()
-          _attemptConnectionToMinister()
-        }, 1000)
+            .catch(() => {
+              return false
+            })
+        )
+      ))
+      .then(compact)
+      .then(sortByFp(getFp('latency')))
+      .then(head)
+      .then(getFp('endpoint'))
+      .then(endpoint => {
+        if (!_running) {
+          _dialedEndpoints = []
+          return debug(`Connection attempt N° ${attemptNo} blocked because client is not running`)
+        }
+        if (_connected) return debug(`Connection attempt N° ${attemptNo} blocked because client is already connected`)
+        if (endpoint) {
+          _setupDealer()
+          _subscribeToDealer()
+          if (attemptNo === 1) client.emit('connecting')
+          _dealer.connect(endpoint)
+          _dealer.send(clientHelloMessage())
+          _dialedEndpoints.push(endpoint)
+          debug(`Connection attempt N° ${attemptNo} started`)
+          setTimeout(() => {
+            if (!_connected && _running) {
+              debug(`Connection attempt N° ${attemptNo} is taking too long`)
+              _attemptConnection()
+            }
+          }, HEARTBEAT_INTERVAL)
+        } else {
+          _onConnectionFail()
+        }
       })
   }
-  let _onMinisterConnection = () => {
+  let _onConnectionSuccess = () => {
     _connected = true
-    client.emit('connection')
-    _unsubscribeFromDealer = _observeDealer()
-    _dealer.send(clientHelloMessage())
+    _lastConnectedEndpoint = last(_dialedEndpoints)
+    _dialedEndpoints = []
+    _monitorConnection()
+    _startHeartbeats()
     _dispatchRequests()
+    debug(`Connected to a minister`)
+    client.emit('connection')
   }
-  let _onMinisterLost = () => {
-    _connected = false
-    client.emit('disconnection')
+  let _onConnectionFail = () => {
+    _dialedEndpoints = []
     _unsubscribeFromDealer()
-    _unsubscribeFromDealer = null
-    _attemptConnectionToMinister()
+    _tearDownDealer()
+    debug(`Could not connect to any minister`)
+    client.emit('connection fail')
+    if (_running) setTimeout(_attemptConnection, 1000)
+  }
+  let _onConnectionEnd = () => {
+    _connected = false
+    _unsubscribeFromDealer()
+    _unmonitorConnection()
+    _stopHeartbeats()
+    _handleRequestsOnDisconnection()
+    debug(`Disconnected from minister`)
+    client.emit('disconnection')
+  }
+
+  // Connection monitoring
+  let _connectionLiveness = 0
+  let _connectionCheckInterval
+  let _monitorConnection = () => {
+    _unmonitorConnection()
+    _connectionLiveness = HEARTBEAT_LIVENESS
+    debug(`${_connectionLiveness} remaining lives for connection`)
+    _connectionCheckInterval = setInterval(() => {
+      _connectionLiveness--
+      debug(`${_connectionLiveness} remaining lives for connection`)
+      if (!_connectionLiveness) {
+        _onConnectionEnd()
+        _attemptConnection()
+      }
+    }, HEARTBEAT_INTERVAL)
+  }
+  let _unmonitorConnection = () => {
+    if (_connectionCheckInterval) {
+      clearInterval(_connectionCheckInterval)
+      _connectionCheckInterval = null
+    }
+  }
+
+  // Heartbeats
+  let _heartbeatsInterval
+  let _heartbeatMessage = clientHeartbeatMessage()
+  let _startHeartbeats = () => {
+    _heartbeatsInterval = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL)
+  }
+  let _stopHeartbeats = () => clearInterval(_heartbeatsInterval)
+  let _sendHeartbeat = () => {
+    if (_dealer) {
+      debug('Sending hearbeat')
+      _dealer.send(_heartbeatMessage)
+    }
   }
 
   // Requests dispatching
@@ -198,30 +293,37 @@ const Client = (settings) => {
         _dealer.send(request.frames)
       })
   }
+  let _handleRequestsOnDisconnection = () => {
+    _requestsWaitingResponse()
+      .filter(getFp('isRetryable'))
+      .forEach(request => request.reschedule())
+
+    _requestsStreamingResponse()
+      .filter(getFp('isRetryableIfStreaming'))
+      .forEach(request => request.reschedule())
+  }
 
   // Public API
   function start () {
-    if (_running || _starting) return client
-    _starting = true
-    _attemptConnectionToMinister()
-    client.once('connection', () => {
-      _starting = false
-      _running = true
-      client.emit('start')
-    })
+    if (_running) return client
+    _running = true
+    process.nextTick(() => _attemptConnection())
+    debug('Start')
+    client.emit('start')
     return client
   }
   function stop () {
-    if (!_running || _stopping) return client
-    _stopping = true
-    log('Sending disconnection message')
-    _dealer.send(clientDisconnectionMessage())
-    setTimeout(() => {
-      _tearDownDealer()
-      _stopping = false
-      _running = false
-      client.emit('stop')
-    }, 1000)
+    if (!_running) return client
+    _running = false
+
+    if (_connected) {
+      _onConnectionEnd()
+      debug('Sending disconnection message')
+      _dealer.send(clientDisconnectionMessage())
+      setTimeout(_tearDownDealer(), 500)
+    }
+
+    client.emit('stop')
     return client
   }
   function request (service, body, reqOptions) {
@@ -249,21 +351,21 @@ let defaultSettings = {}
 
 let defaultRequestOptions = {
   timeout: 60000,
-  retryOnLostWorker: false,
-  retryOnLostConnection: false
+  retryOnLostConnection: false,
+  retryStreamOnLostConnection: false
 }
 
 const eMsg = prefixString('Minister(settings): ')
 function validateSettings (settings) {
-  let {minister, security} = settings
+  let {endpoint, security} = settings
 
-  // Minister
-  let ministerErrorMessage = eMsg('settings.minister MUST be a string, representing either a DNS resolvable hostname or a valid TCP endpoint, in the form of \'tcp://IP:port\'')
+  // Endpoint
+  let endpointErrorMessage = eMsg('settings.endpoint MUST be a string, representing either \'hostname:port\', where hostname will be resolved through DNS, or a valid TCP endpoint, in the form of \'tcp://IP:port\'')
   if (
-    !isValidHostAndPort(minister) &&
-    !isValidEndpoint(minister)
-  ) throw new Error(ministerErrorMessage)
-  settings.dnsMinister = isValidHostAndPort(minister)
+    !isValidHostAndPort(endpoint) &&
+    !isValidEndpoint(endpoint)
+  ) throw new Error(endpointErrorMessage)
+  settings.dnsEndpoint = isValidHostAndPort(endpoint)
 
   // Security
   if (security) {
