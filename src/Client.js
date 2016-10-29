@@ -3,7 +3,7 @@ import zmq from 'zmq'
 import Rx from 'rxjs'
 import uuid from 'uuid'
 import EventEmitter from 'eventemitter3'
-import { isPlainObject, pull, without, compact, head, last, each, noop } from 'lodash'
+import { isPlainObject, isInteger, isString, pull, without, compact, uniq, head, last, each, noop } from 'lodash'
 import sortByFp from 'lodash/fp/sortBy'
 import getFp from 'lodash/fp/get'
 
@@ -42,13 +42,15 @@ import {
 import {
   getClientRequestInstance,
   findRequestByUUID,
-  findUnassignedRequests
+  findUnassignedRequests,
+  findIdempotentRequests
 } from './helpers/requests'
 
 // Constants
 import {
   HEARTBEAT_LIVENESS,
-  HEARTBEAT_INTERVAL
+  HEARTBEAT_INTERVAL,
+  RESPONSE_LOST_WORKER
 } from './CONSTANTS'
 
 const Client = (settings) => {
@@ -66,15 +68,14 @@ const Client = (settings) => {
   let _requests = []
   let _requestByUUID = findRequestByUUID(_requests)
   let _requestsUnassigned = findUnassignedRequests(_requests)
-  let _requestsWaitingResponse = findWaitingResponseRequests(_requests)
-  let _requestsStreamingResponse = findStreamingResponseRequests(_requests)
+  let _requestsIdempotent = findIdempotentRequests(_requests)
 
   // Worker messages
   let _onWorkerPartialResponse = (msg) => {
     _monitorConnection()
     let uuid = msg[2].toString()
     let request = _requestByUUID(uuid)
-    if (request) request.emit('data')
+    if (request) request.givePartialResponse(msg[3])
   }
   let _onWorkerFinalResponse = (msg) => {
     _monitorConnection()
@@ -86,7 +87,18 @@ const Client = (settings) => {
     _monitorConnection()
     let uuid = msg[2].toString()
     let request = _requestByUUID(uuid)
-    if (request) request.giveErrorResponse(msg[3])
+    if (request) {
+      let error = JSON.parse(msg[3])
+      if (
+        error === RESPONSE_LOST_WORKER &&
+        request.isIdempotent &&
+        (request.isClean || request.canReconnectStream)
+      ) {
+        request.reschedule()
+        return _dispatchRequests()
+      }
+      request.giveErrorResponse(msg[3])
+    }
   }
   // Minister messages
   let _onMinisterHeartbeat = () => {
@@ -234,6 +246,10 @@ const Client = (settings) => {
     _unsubscribeFromDealer()
     _tearDownDealer()
     debug(`Could not connect to any minister`)
+    if (!_settings.dnsEndpoint) {
+      _knownEndpoints.push(_settings.endpoint)
+      _knownEndpoints = uniq(_knownEndpoints)
+    }
     client.emit('connection fail')
     if (_running) setTimeout(_attemptConnection, 1000)
   }
@@ -253,10 +269,10 @@ const Client = (settings) => {
   let _monitorConnection = () => {
     _unmonitorConnection()
     _connectionLiveness = HEARTBEAT_LIVENESS
-    debug(`${_connectionLiveness} remaining lives for connection`)
+    // debug(`${_connectionLiveness} remaining lives for connection`)
     _connectionCheckInterval = setInterval(() => {
       _connectionLiveness--
-      debug(`${_connectionLiveness} remaining lives for connection`)
+      // debug(`${_connectionLiveness} remaining lives for connection`)
       if (!_connectionLiveness) {
         _onConnectionEnd()
         _attemptConnection()
@@ -294,13 +310,18 @@ const Client = (settings) => {
       })
   }
   let _handleRequestsOnDisconnection = () => {
-    _requestsWaitingResponse()
-      .filter(getFp('isRetryable'))
-      .forEach(request => request.reschedule())
+    let idempotentRequests = _requestsIdempotent()
+    let notIdempotentRequests = without(_requests, ...idempotentRequests)
 
-    _requestsStreamingResponse()
-      .filter(getFp('isRetryableIfStreaming'))
-      .forEach(request => request.reschedule())
+    idempotentRequests.forEach(request => {
+      if (request.isClean || request.canReconnectStream) {
+        request.reschedule()
+      } else {
+        request.signalLostWorker()
+      }
+    })
+
+    notIdempotentRequests.forEach(request => request.signalLostWorker())
   }
 
   // Public API
@@ -315,6 +336,7 @@ const Client = (settings) => {
   function stop () {
     if (!_running) return client
     _running = false
+    _requests.forEach(request => request.abort())
 
     if (_connected) {
       _onConnectionEnd()
@@ -327,17 +349,30 @@ const Client = (settings) => {
     return client
   }
   function request (service, body, reqOptions) {
+    if (!service || !isString(service)) throw new Error('service MUST be a nonempty string')
+    let _eBody
+    let _body = body instanceof Buffer ? body : null
+    if (!_body) { try { _body = new Buffer(JSON.stringify(body)) } catch (e) { _eBody = e } }
+    if (!_body) { try { _body = new Buffer(body) } catch (e) { _eBody = e } }
+    if (!body) throw _eBody
+
     reqOptions = isPlainObject(reqOptions) ? reqOptions : {}
     let options = {...defaultRequestOptions, reqOptions}
+    options.timeout = isInteger(options.timeout) && options.timeout > 0
+      ? options.timeout : 0
+    options.idempotent = !!options.idempotent
+    options.reconnectStream = !!options.reconnectStream
+
     let request = getClientRequestInstance({
       service,
-      body,
       options,
+      body: _body,
       onFinished: () => pull(_requests, request)
     })
+
     _requests.push(request)
     process.nextTick(() => _dispatchRequests())
-    return request
+    return request.readableInterface
   }
 
   return Object.defineProperties(client, {
@@ -351,8 +386,8 @@ let defaultSettings = {}
 
 let defaultRequestOptions = {
   timeout: 60000,
-  retryOnLostConnection: false,
-  retryStreamOnLostConnection: false
+  idempotent: false,
+  reconnectStream: false
 }
 
 const eMsg = prefixString('Minister(settings): ')

@@ -39,20 +39,21 @@ const ministerDoesService = curry((service, minister) =>
 // Exported
 export let getMinisterInstance = ({router, id, latency, endpoint}) => {
   let minister = {
-    type: 'Minister',
-    id,
-    latency,
-    endpoint,
     workers: [],
     assignedRequests: 0
   }
 
-  Object.defineProperty(minister, 'send', {value: (frames) => router.send([id, ...frames])})
-  Object.defineProperty(minister, 'slotsForService', {
-    value: (service) =>
+  return Object.defineProperties(minister, {
+    type: {value: 'Minister', enumerable: true},
+    id: {value: id, enumerable: true},
+    name: {value: id.substring(0, 11), enumerable: true},
+    latency: {value: latency, enumerable: true},
+    endpoint: {value: endpoint, enumerable: true},
+    send: {value: (frames) => router.send([id, ...frames])},
+    slotsForService: {value: (service) =>
       minister.workers.filter(workerDoesService(service)).reduce((slots, {freeSlots}) => slots + freeSlots, 0)
+    }
   })
-  return minister
 }
 
 export let findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))

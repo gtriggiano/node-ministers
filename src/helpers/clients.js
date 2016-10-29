@@ -8,14 +8,14 @@ const clientHasId = (clientId) => compose(isEqualFp(clientId), getFp('id'))
 
 // External
 const getClientInstance = ({router, id}) => {
-  let client = {
-    type: 'Client',
-    id
-  }
+  let client = {}
 
-  Object.defineProperty(client, 'send', {value: (...frames) => router.send([id, ...frames])})
-
-  return client
+  return Object.defineProperties(client, {
+    type: {value: 'Client', enumerable: true},
+    id: {value: id, enumerable: true},
+    name: {value: id.substring(0, 11), enumerable: true},
+    send: {value: (frames) => router.send([id, ...frames])}
+  })
 }
 
 const findClientById = curry((clients, clientId) => clients.find(clientHasId(clientId)))

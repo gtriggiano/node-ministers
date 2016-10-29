@@ -147,7 +147,8 @@ const Minister = (settings) => {
       _monitor(client)
       _clients.push(client)
       client.send(_heartbeatMessage)
-      minister.emit('client:connection', client.id)
+      debug(`New connected client ${client.name}`)
+      minister.emit('client:connection', client)
     }
   }
   let _onClientHeartbeat = (msg) => {
@@ -258,12 +259,6 @@ const Minister = (settings) => {
 
     let m = _ministerById(ministerId)
     if (!m) {
-      if (binding) debug(`Communicating with minister bound at ${endpoint}`)
-      if (!binding) debug(`Communicating with connected minister`)
-
-      debug(`Minister ID: ${ministerId}`)
-      debug(`Minister latency: ${latency} milliseconds\n`)
-
       m = getMinisterInstance({
         router: binding ? _connectingRouter : _bindingRouter,
         id: ministerId,
@@ -277,7 +272,13 @@ const Minister = (settings) => {
         latency,
         endpoint: _bindingRouter.endpoint
       })))
-      minister.emit('minister:connection', m.id, m.service)
+
+      if (binding) debug(`Communicating with minister bound at ${endpoint}`)
+      if (!binding) debug(`Communicating with connected minister`)
+      debug(`Minister name: ${m.name}`)
+      debug(`Minister latency: ${m.latency} milliseconds\n`)
+
+      minister.emit('minister:connection', m)
     }
   }
   let _onMinisterWorkersAvailability = (msg) => {
@@ -295,7 +296,7 @@ const Minister = (settings) => {
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
     let { identity, latency } = JSON.parse(msg[3])
-    debug(`Received notification of a new connected minister (${identity}). Sending HELLO message\n`)
+    debug(`Received notification of a new connected minister (${identity.substring(0, 11)}). Sending HELLO message\n`)
     let infos = JSON.stringify({
       binding: true,
       latency,
@@ -476,9 +477,10 @@ const Minister = (settings) => {
   let _monitor = (peer) => {
     _unmonitor(peer)
     peer.liveness = HEARTBEAT_LIVENESS
+    // debug(`${peer.liveness} remaining lives for ${peer.type} ${peer.name}`)
     peer.heartbeatCheck = setInterval(() => {
       peer.liveness--
-      debug(`${peer.liveness} lives for ${peer.type} ${peer.id}`)
+      // debug(`${peer.liveness} remaining lives for ${peer.type} ${peer.name}`)
       if (!peer.liveness) {
         switch (peer.type) {
           case 'Client': return _onClientLost(peer)
@@ -497,11 +499,11 @@ const Minister = (settings) => {
   let _onClientLost = (client) => {
     _unmonitor(client)
     let pendingReceivedRequests = _requestsFromClient(client)
-    debug(`Lost connection with client ${client.id}.
-      Discarding ${pendingReceivedRequests.length} requests.`)
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pull(_requests, ...pendingReceivedRequests)
     pull(_clients, client)
+    debug(`Lost connection with client ${client.name}.`)
+    debug(`Discarded ${pendingReceivedRequests.length} requests.`)
     minister.emit('client:disconnection', client.id)
   }
   let _onWorkerLost = (worker) => {
@@ -518,9 +520,9 @@ const Minister = (settings) => {
     _unmonitor(m)
     let pendingReceivedRequests = _requestsFromMinister(m)
     let pendingAssignedRequests = _requestsAssignedToMinister(m)
-    debug(`Lost connection with minister ${m.id}
-      Discarding ${pendingReceivedRequests.length} received requests.
-      Discarding ${pendingAssignedRequests.length} assigned requests.`)
+    debug(`Lost connection with minister ${m.name}`)
+    debug(`Discarding ${pendingReceivedRequests.length} received requests`)
+    debug(`Discarding ${pendingAssignedRequests.length} assigned requests.`)
 
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pendingAssignedRequests.forEach(request => request.lostWorker())

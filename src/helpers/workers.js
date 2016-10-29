@@ -12,18 +12,19 @@ const workerDoesService = (service) => compose(isEqualFp(service), getFp('servic
 // Exported
 const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
   let worker = {
-    type: 'Worker',
-    id,
-    service,
     concurrency,
-    assignedRequests: 0,
-    latency
+    assignedRequests: 0
   }
 
-  Object.defineProperty(worker, 'send', {value: (...frames) => router.send([id, ...frames])})
-  Object.defineProperty(worker, 'freeSlots', {get: () => max([0, worker.concurrency - worker.assignedRequests])})
-
-  return worker
+  return Object.defineProperties(worker, {
+    type: {value: 'Minister', enumerable: true},
+    id: {value: id, enumerable: true},
+    name: {value: id.substring(0, 11), enumerable: true},
+    service: {value: service, enumerable: true},
+    latency: {value: latency, enumerable: true},
+    send: {value: (...frames) => router.send([id, ...frames])},
+    freeSlots: {get: () => worker.concurrency ? max([0, worker.concurrency - worker.assignedRequests]) : 1000000}
+  })
 }
 
 const findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
