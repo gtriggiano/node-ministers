@@ -3,7 +3,19 @@ import zmq from 'zmq'
 import Rx from 'rxjs'
 import uuid from 'uuid'
 import EventEmitter from 'eventemitter3'
-import { isPlainObject, isInteger, isString, pull, without, compact, uniq, head, last, each, noop } from 'lodash'
+import {
+  isPlainObject,
+  isInteger,
+  isString,
+  pull,
+  without,
+  compact,
+  uniq,
+  head,
+  last,
+  each,
+  noop
+} from 'lodash'
 import sortByFp from 'lodash/fp/sortBy'
 import getFp from 'lodash/fp/get'
 
