@@ -39,7 +39,7 @@ const requestHasUUID = (uuid) => compose(isEqualFp(uuid), getFp('uuid'))
 // Exported
 export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, options, onFinished}) => {
   let request = {}
-  let {idempotent, reconnectStream} = JSON.parse(options)
+  let {idempotent, reconnectStream} = options
 
   let _isClean = true
   let _isAccomplished = false
@@ -98,7 +98,7 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
   let _isFailed = false
   let _isFinished = false
   let _receivedBytes = 0
-  let _uuid = new Buffer(uuid.v4())
+  let _uuid = uuid.v4()
   let _options = JSON.stringify(options)
 
   let _timeoutHandle
@@ -149,7 +149,7 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
     }},
     reschedule: {value: () => {
       if (_isFinished) return
-      delete request.assignee
+      delete request.isDispatched
       _uuid = new Buffer(uuid.v4())
       if (timeout && !_timeoutHandle) _setupTimeout()
     }},
@@ -175,6 +175,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     objectMode: true,
     write (chunk, encoding, cb) {
       cb()
+
       if (_ended) return
 
       if (_hasStakeholder) {
@@ -195,6 +196,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
           : _ending
             ? workerFinalResponseMessage(uuid, body)
             : workerPartialResponseMessage(uuid, body)
+
         connection.send(msg)
       }
 
