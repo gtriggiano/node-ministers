@@ -27,24 +27,24 @@ import {
   isWorkerErrorResponse,
   isMinisterHeartbeat,
   isMinisterDisconnect
-} from './helpers/messages'
+} from './messages'
 
 // Utils
 import {
   prefixString
-} from './helpers/utils'
+} from './utils'
 
 // Ministers
 import {
   discoverMinistersEndpoints,
   getMinisterLatency
-} from './helpers/ministers'
+} from './ministers'
 
 // Constants
 import {
   HEARTBEAT_LIVENESS,
   HEARTBEAT_INTERVAL
-} from './CONSTANTS'
+} from '../CONSTANTS'
 
 let dMsg = prefixString('Connection interface: ')
 
