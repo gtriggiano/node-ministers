@@ -1,4 +1,3 @@
-
 import Client from './Client'
 import Minister from './Minister'
 import Worker from './Worker'
