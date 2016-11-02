@@ -167,7 +167,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     let attemptNo = _attemptedConnections.length + 1
     if (!_active) {
       _attemptedConnections = []
-      return debug(dMsg`Connection attempt N° ${attemptNo} blocked because connection was deactivated`)
+      return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because connection was deactivated`))
     }
 
     _compilePhonebook()
@@ -184,23 +184,23 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
       .then(compact)
       .then(sortByFp(getFp('latency')))
       .then(head)
-      .then(connection => {
+      .then(conn => {
         if (!_active) {
           _attemptedConnections = []
-          return debug(dMsg`Connection attempt N° ${attemptNo} blocked because client is not running`)
+          return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because client is not running`))
         }
-        if (_connected) return debug(dMsg`Connection attempt N° ${attemptNo} blocked because connection was deactivated`)
-        if (connection) {
+        if (_connected) return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because connection was deactivated`))
+        if (conn) {
           _setupDealer()
           _subscribeToDealer()
           if (attemptNo === 1) connection.emit('connecting')
-          _dealer.connect(connection.endpoint)
-          _dealer.send(getInitialMessage(connection))
-          _attemptedConnections.push(connection)
-          debug(dMsg`Connection attempt N° ${attemptNo} started`)
+          _dealer.connect(conn.endpoint)
+          _dealer.send(getInitialMessage(conn))
+          _attemptedConnections.push(conn)
+          debug(dMsg(`Connection attempt N° ${attemptNo} started`))
           setTimeout(() => {
             if (!_connected && _active) {
-              debug(dMsg`Connection attempt N° ${attemptNo} is taking too long. Trying next...`)
+              debug(dMsg(`Connection attempt N° ${attemptNo} is taking too long. Trying next...`))
               _attemptConnection()
             }
           }, HEARTBEAT_INTERVAL)
@@ -214,8 +214,8 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _connection = last(_attemptedConnections)
     _attemptedConnections = []
     _monitorConnection()
-    _startHeartbeats()
     debug(dMsg(`Connected to a minister at ${_connection.endpoint}`))
+    _startHeartbeats()
     connection.emit('connection')
   }
   let _onConnectionFail = () => {

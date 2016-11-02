@@ -194,6 +194,7 @@ const Minister = (settings) => {
       })
       _monitor(worker)
       _workers.push(worker)
+      worker.send(_heartbeatMessage)
       _broadcastWorkersAvailability()
       minister.emit('worker:connection', worker.id, worker.service)
     }
@@ -483,7 +484,7 @@ const Minister = (settings) => {
     // debug(`${peer.liveness} remaining lives for ${peer.type} ${peer.name}`)
     peer.heartbeatCheck = setInterval(() => {
       peer.liveness--
-      // debug(`${peer.liveness} remaining lives for ${peer.type} ${peer.name}`)
+      debug(`${peer.liveness} remaining lives for ${peer.type} ${peer.name}`)
       if (!peer.liveness) {
         switch (peer.type) {
           case 'Client': return _onClientLost(peer)
@@ -512,8 +513,8 @@ const Minister = (settings) => {
   let _onWorkerLost = (worker) => {
     _unmonitor(worker)
     let pendingAssignedRequests = _requestsAssignedToWorker(worker)
-    debug(`Lost connection with worker ${worker.id}
-      Discarding ${pendingAssignedRequests.length} assigned requests.`)
+    debug(`Lost connection with worker ${worker.id}`)
+    debug(`Discarding ${pendingAssignedRequests.length} assigned requests.`)
     pendingAssignedRequests.forEach(request => request.lostWorker())
     pull(_requests, ...pendingAssignedRequests)
     pull(_workers, worker)

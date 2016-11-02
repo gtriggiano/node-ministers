@@ -17,12 +17,12 @@ const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
   }
 
   return Object.defineProperties(worker, {
-    type: {value: 'Minister', enumerable: true},
+    type: {value: 'Worker', enumerable: true},
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
     service: {value: service, enumerable: true},
     latency: {value: latency, enumerable: true},
-    send: {value: (...frames) => router.send([id, ...frames])},
+    send: {value: (frames) => router.send([id, ...frames])},
     freeSlots: {get: () => worker.concurrency >= 0 ? max([0, worker.concurrency - worker.assignedRequests]) : 1000000}
   })
 }
