@@ -5,12 +5,10 @@ import getFp from 'lodash/fp/get'
 import pickFp from 'lodash/fp/pick'
 
 // Internals
-const workerHasId = (workerId) => compose(isEqualFp(workerId), getFp('id'))
-
-const workerDoesService = (service) => compose(isEqualFp(service), getFp('service'))
+export let workerHasId = (workerId) => compose(isEqualFp(workerId), getFp('id'))
 
 // Exported
-const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
+export let getWorkerInstance = ({router, id, service, concurrency, latency}) => {
   let worker = {
     concurrency,
     assignedRequests: 0
@@ -27,11 +25,13 @@ const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
   })
 }
 
-const findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
+export let findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
 
-const workerToState = pickFp(['id', 'service', 'concurrency', 'pendingRequests'])
+export let workerToState = pickFp(['id', 'service', 'concurrency', 'pendingRequests'])
 
-const findWorkerForService = curry((workers, service) =>
+export let workerDoesService = (service) => compose(isEqualFp(service), getFp('service'))
+
+export let findWorkerForService = curry((workers, service) =>
   workers.filter(workerDoesService(service)).sort((w1, w2) => {
     let slots1 = w1.freeSlots
     let slots2 = w2.freeSlots
@@ -47,10 +47,3 @@ const findWorkerForService = curry((workers, service) =>
             : 0
   })[0]
 )
-
-export {
-  getWorkerInstance,
-  findWorkerById,
-  workerToState,
-  findWorkerForService
-}

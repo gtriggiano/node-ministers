@@ -79,13 +79,13 @@ const Worker = (settings) => {
   })
 
   // Public API
-  let activate = () => {
+  let start = () => {
     if (_active) return worker
     _active = true
     _connection.activate()
     return worker
   }
-  let deactivate = () => {
+  let stop = () => {
     if (!_active) return worker
     _active = false
     _connection.deactivate()
@@ -93,8 +93,8 @@ const Worker = (settings) => {
   }
 
   return Object.defineProperties(worker, {
-    activate: {value: activate},
-    deactivate: {value: deactivate},
+    start: {value: start},
+    stop: {value: stop},
     concurrency: {
       get () { return _concurrency },
       set (val) {
