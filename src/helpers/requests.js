@@ -168,7 +168,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
   let request = Object.defineProperties({}, {
     body: {value: {...body}, enumerable: true},
     options: {value: {...options}, enumerable: true},
-    isActive: {get () { return _hasStakeholder }}
+    clientIsActive: {get () { return _hasStakeholder }}
   })
 
   let response = new stream.Writable({
@@ -225,6 +225,8 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     response: {value: response},
     lostStakeholder () {
       _hasStakeholder = false
+      response.on('error', noop)
+      process.nextTick(() => response.end())
     }
   })
 }
