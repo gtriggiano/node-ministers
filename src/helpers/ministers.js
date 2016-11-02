@@ -50,8 +50,12 @@ export let getMinisterInstance = ({router, id, latency, endpoint}) => {
     latency: {value: latency, enumerable: true},
     endpoint: {value: endpoint, enumerable: true},
     send: {value: (frames) => router.send([id, ...frames])},
-    slotsForService: {value: (service) =>
-      minister.workers.filter(workerDoesService(service)).reduce((slots, {freeSlots}) => slots + freeSlots, 0)
+    hasSlotsForService: {value: (service) =>
+      minister.workers
+        .filter(workerDoesService(service))
+        .filter(({concurrency, pendingRequests}) =>
+          concurrency < 0 || concurrency > pendingRequests)
+        .length > 0
     }
   })
 }

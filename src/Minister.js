@@ -171,8 +171,8 @@ const Minister = (settings) => {
         stakeholder,
         uuid,
         service,
-        timeout: options.timeout,
         frames,
+        options,
         onFinished: () => pull(_requests, request)
       })
       _requests.push(request)
@@ -182,7 +182,7 @@ const Minister = (settings) => {
   // Worker messages
   let _onWorkerReady = (msg) => {
     let workerId = msg[0]
-    let {service, concurrency, latency} = JSON.parse(msg[2])
+    let {service, concurrency, latency} = JSON.parse(msg[3])
     let worker = _workerById(workerId)
     if (!worker) {
       worker = getWorkerInstance({
@@ -622,7 +622,7 @@ const Minister = (settings) => {
         let minister = _ministerForService(request.service)
         let assignee = worker && worker.freeSlots
                         ? worker
-                        : minister && minister.slotsForService(request.service)
+                        : minister && minister.hasSlotsForService(request.service)
                           ? minister
                           : null
         if (assignee) {
