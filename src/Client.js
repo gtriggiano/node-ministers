@@ -117,13 +117,13 @@ const Client = (settings) => {
   }
 
   // Public API
-  function activate () {
+  function start () {
     if (_active) return client
     _active = true
     _connection.activate()
     return client
   }
-  function deactivate () {
+  function stop () {
     if (!_active) return client
     _active = false
     _connection.deactivate()
@@ -133,10 +133,10 @@ const Client = (settings) => {
     if (!service || !isString(service)) throw new Error('service MUST be a nonempty string')
 
     let body = {}
-    try { body = isPlainObject(reqBody) ? JSON.stringify(reqBody) : body } catch (e) {}
+    try { body = isPlainObject(reqBody) ? JSON.stringify(reqBody) : JSON.stringify(body) } catch (e) {}
 
     reqOptions = isPlainObject(reqOptions) ? reqOptions : {}
-    let options = {...defaultRequestOptions, reqOptions}
+    let options = {...defaultRequestOptions, ...reqOptions}
     options.timeout = isInteger(options.timeout) && options.timeout > 0
       ? options.timeout : 0
     options.idempotent = !!options.idempotent
@@ -155,8 +155,8 @@ const Client = (settings) => {
   }
 
   return Object.defineProperties(client, {
-    activate: {value: activate},
-    deactivate: {value: deactivate},
+    start: {value: start},
+    stop: {value: stop},
     request: {value: request}
   })
 }
