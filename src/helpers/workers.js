@@ -23,13 +23,13 @@ const getWorkerInstance = ({router, id, service, concurrency, latency}) => {
     service: {value: service, enumerable: true},
     latency: {value: latency, enumerable: true},
     send: {value: (...frames) => router.send([id, ...frames])},
-    freeSlots: {get: () => worker.concurrency ? max([0, worker.concurrency - worker.assignedRequests]) : 1000000}
+    freeSlots: {get: () => worker.concurrency >= 0 ? max([0, worker.concurrency - worker.assignedRequests]) : 1000000}
   })
 }
 
 const findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
 
-const workerToState = pickFp(['id', 'service', 'freeSlots'])
+const workerToState = pickFp(['id', 'service', 'concurrency', 'pendingRequests'])
 
 const findWorkerForService = curry((workers, service) =>
   workers.filter(workerDoesService(service)).sort((w1, w2) => {

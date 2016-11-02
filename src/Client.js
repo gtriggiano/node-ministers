@@ -1,7 +1,4 @@
 import D from 'debug'
-import zmq from 'zmq'
-import Rx from 'rxjs'
-import uuid from 'uuid'
 import EventEmitter from 'eventemitter3'
 import {
   isPlainObject,
@@ -9,15 +6,8 @@ import {
   isString,
   pull,
   without,
-  compact,
-  uniq,
-  head,
-  last,
-  each,
-  noop
+  intersection
 } from 'lodash'
-import sortByFp from 'lodash/fp/sortBy'
-import getFp from 'lodash/fp/get'
 
 // Utils
 import {
@@ -30,40 +20,26 @@ import {
 
 // Messages
 import {
-  isWorkerMessage,
-  isMinisterMessage,
-
-  isWorkerPartialResponse,
-  isWorkerFinalResponse,
-  isWorkerErrorResponse,
-  isMinisterHeartbeat,
-  isMinisterDisconnect,
-
   clientHelloMessage,
   clientHeartbeatMessage,
   clientDisconnectionMessage
 } from './helpers/messages'
 
-// Ministers
-import {
-  discoverMinistersEndpoints,
-  getMinisterLatency
-} from './helpers/ministers'
-
 // Requests
 import {
   getClientRequestInstance,
   findRequestByUUID,
-  findUnassignedRequests,
+  findNotDispatchedRequests,
+  findDispatchedRequests,
   findIdempotentRequests
 } from './helpers/requests'
 
 // Constants
 import {
-  HEARTBEAT_LIVENESS,
-  HEARTBEAT_INTERVAL,
   RESPONSE_LOST_WORKER
 } from './CONSTANTS'
+
+import { ClientConnection } from './helpers/ClientConnection'
 
 const Client = (settings) => {
   let debug = D('ministers:client')
@@ -73,300 +49,91 @@ const Client = (settings) => {
   validateSettings(_settings)
 
   // Private API
-  // Client state
-  let _running = false
+  let _active = false
+  let _connection = ClientConnection({
+    type: 'Client',
+    endpoint: _settings.endpoint,
+    DNSDiscovery: _settings.haveHostAndPortEndpoint,
+    security: _settings.security,
+    debug,
+    getInitialMessage: clientHelloMessage,
+    getHearbeatMessage: clientHeartbeatMessage,
+    getDisconnectionMessage: clientDisconnectionMessage
+  })
 
   // Requests
   let _requests = []
   let _requestByUUID = findRequestByUUID(_requests)
-  let _requestsUnassigned = findUnassignedRequests(_requests)
+  let _requestsNotDispatched = findNotDispatchedRequests(_requests)
+  let _requestsDispatched = findDispatchedRequests(_requests)
   let _requestsIdempotent = findIdempotentRequests(_requests)
 
-  // Worker messages
-  let _onWorkerPartialResponse = (msg) => {
-    _monitorConnection()
-    let uuid = msg[2].toString()
+  _connection.on('worker:partial:response', ({uuid, body}) => {
     let request = _requestByUUID(uuid)
-    if (request) request.givePartialResponse(msg[3])
-  }
-  let _onWorkerFinalResponse = (msg) => {
-    _monitorConnection()
-    let uuid = msg[2].toString()
+    if (request) request.givePartialResponse(body)
+  })
+  _connection.on('worker:final:response', ({uuid, body}) => {
     let request = _requestByUUID(uuid)
-    if (request) request.giveFinalResponse(msg[3])
-  }
-  let _onWorkerErrorResponse = (msg) => {
-    _monitorConnection()
-    let uuid = msg[2].toString()
+    if (request) request.giveFinalResponse(body)
+  })
+  _connection.on('worker:error:response', ({uuid, error}) => {
     let request = _requestByUUID(uuid)
     if (request) {
-      let error = JSON.parse(msg[3])
       if (
         error === RESPONSE_LOST_WORKER &&
         request.isIdempotent &&
         (request.isClean || request.canReconnectStream)
       ) {
         request.reschedule()
-        return _dispatchRequests()
+        return process.nextTick(() => _dispatchRequests())
       }
-      request.giveErrorResponse(msg[3])
+      request.giveErrorResponse(error)
     }
-  }
-  // Minister messages
-  let _onMinisterHeartbeat = () => {
-    if (!_running) return
-    if (!_connected) _onConnectionSuccess()
-    _monitorConnection()
-  }
-  let _onMinisterDisconnect = (msg) => {
-    _knownEndpoints = JSON.parse(msg[2])
-    _onConnectionEnd()
-    _attemptConnection()
-  }
-
-  // Dealer lifecycle management
-  let _dealer
-  let _unsubscribeFromDealer = noop
-  let _setupDealer = () => {
-    if (_dealer) _tearDownDealer()
-    _dealer = zmq.socket('dealer')
-    _dealer.linger = 1
-    _dealer.identity = `MC-${uuid.v4()}`
-
-    if (_settings.security) {
-      _dealer.curve_serverkey = _settings.security.serverPublicKey
-      let clientKeys = _settings.security.secretKey
-                          ? {public: _settings.security.publicKey, secret: _settings.security.secretKey}
-                          : zmq.curveKeypair()
-      _dealer.curve_publickey = clientKeys.public
-      _dealer.curve_secretkey = clientKeys.secret
-    }
-
-    debug('Dealer created')
-  }
-  let _tearDownDealer = () => {
-    if (!_dealer) return
-    _dealer.close()
-    _dealer = null
-    debug('Dealer destroyed')
-  }
-  let _subscribeToDealer = () => {
-    // Collect a map of subscriptions
-    let subscriptions = {}
-
-    let subject = new Rx.Subject()
-    let messages = Rx.Observable.fromEvent(_dealer, 'message', (side, msgType, ...frames) => [
-      side && side.toString(),
-      msgType && msgType.toString(),
-      ...frames
-    ]).multicast(subject).refCount()
-    let workerMessages = messages.filter(isWorkerMessage)
-    let ministerMessages = messages.filter(isMinisterMessage)
-
-    subscriptions.workerPartialResponse = workerMessages
-      .filter(isWorkerPartialResponse).subscribe(_onWorkerPartialResponse)
-    subscriptions.workerFinalResponse = workerMessages
-      .filter(isWorkerFinalResponse).subscribe(_onWorkerFinalResponse)
-    subscriptions.workerErrorResponse = workerMessages
-      .filter(isWorkerErrorResponse).subscribe(_onWorkerErrorResponse)
-
-    subscriptions.ministerHeartbeat = ministerMessages
-      .filter(isMinisterHeartbeat).subscribe(_onMinisterHeartbeat)
-    subscriptions.ministerDisconnect = ministerMessages.filter(isMinisterDisconnect).subscribe(_onMinisterDisconnect)
-
-    if (_unsubscribeFromDealer) _unsubscribeFromDealer()
-    _unsubscribeFromDealer = () => {
-      each(subscriptions, subscription => subscription.unsubscribe())
-      _unsubscribeFromDealer = noop
-    }
-  }
-
-  // Connection management
-  let _connected = false
-  let _lastConnectedEndpoint
-  let _dialedEndpoints = []
-  let _knownEndpoints = _settings.dnsEndpoint ? [] : [_settings.endpoint]
-  let _getMinistersEndpoints = () => {
-    if (!_settings.dnsEndpoint) return Promise.resolve()
-    let [ host, port ] = _settings.endpoint.split(':')
-    return discoverMinistersEndpoints({
-      host,
-      port,
-      excludedEndpoint: _lastConnectedEndpoint
-    })
-    .then(endpoints => _knownEndpoints = endpoints)
-  }
-  let _attemptConnection = () => {
-    if (!_running) {
-      _dialedEndpoints = []
-      return debug('Connection attempt blocked because client is not running')
-    }
-    let attemptNo = _dialedEndpoints.length + 1
-
-    _getMinistersEndpoints()
-      .then(() => Promise.all(
-        without(_knownEndpoints, ..._dialedEndpoints)
-        .map(endpoint =>
-          getMinisterLatency(endpoint)
-            .then(latency => ({endpoint, latency}))
-            .catch(() => {
-              return false
-            })
-        )
-      ))
-      .then(compact)
-      .then(sortByFp(getFp('latency')))
-      .then(head)
-      .then(getFp('endpoint'))
-      .then(endpoint => {
-        if (!_running) {
-          _dialedEndpoints = []
-          return debug(`Connection attempt N° ${attemptNo} blocked because client is not running`)
-        }
-        if (_connected) return debug(`Connection attempt N° ${attemptNo} blocked because client is already connected`)
-        if (endpoint) {
-          _setupDealer()
-          _subscribeToDealer()
-          if (attemptNo === 1) client.emit('connecting')
-          _dealer.connect(endpoint)
-          _dealer.send(clientHelloMessage())
-          _dialedEndpoints.push(endpoint)
-          debug(`Connection attempt N° ${attemptNo} started`)
-          setTimeout(() => {
-            if (!_connected && _running) {
-              debug(`Connection attempt N° ${attemptNo} is taking too long`)
-              _attemptConnection()
-            }
-          }, HEARTBEAT_INTERVAL)
-        } else {
-          _onConnectionFail()
-        }
-      })
-  }
-  let _onConnectionSuccess = () => {
-    _connected = true
-    _lastConnectedEndpoint = last(_dialedEndpoints)
-    _dialedEndpoints = []
-    _monitorConnection()
-    _startHeartbeats()
+  })
+  _connection.on('connection', () => {
     _dispatchRequests()
-    debug(`Connected to a minister`)
     client.emit('connection')
-  }
-  let _onConnectionFail = () => {
-    _dialedEndpoints = []
-    _unsubscribeFromDealer()
-    _tearDownDealer()
-    debug(`Could not connect to any minister`)
-    if (!_settings.dnsEndpoint) {
-      _knownEndpoints.push(_settings.endpoint)
-      _knownEndpoints = uniq(_knownEndpoints)
-    }
-    client.emit('connection fail')
-    if (_running) setTimeout(_attemptConnection, 1000)
-  }
-  let _onConnectionEnd = () => {
-    _connected = false
-    _unsubscribeFromDealer()
-    _unmonitorConnection()
-    _stopHeartbeats()
-    _handleRequestsOnDisconnection()
-    debug(`Disconnected from minister`)
-    client.emit('disconnection')
-  }
-
-  // Connection monitoring
-  let _connectionLiveness = 0
-  let _connectionCheckInterval
-  let _monitorConnection = () => {
-    _unmonitorConnection()
-    _connectionLiveness = HEARTBEAT_LIVENESS
-    // debug(`${_connectionLiveness} remaining lives for connection`)
-    _connectionCheckInterval = setInterval(() => {
-      _connectionLiveness--
-      // debug(`${_connectionLiveness} remaining lives for connection`)
-      if (!_connectionLiveness) {
-        _onConnectionEnd()
-        _attemptConnection()
-      }
-    }, HEARTBEAT_INTERVAL)
-  }
-  let _unmonitorConnection = () => {
-    if (_connectionCheckInterval) {
-      clearInterval(_connectionCheckInterval)
-      _connectionCheckInterval = null
-    }
-  }
-
-  // Heartbeats
-  let _heartbeatsInterval
-  let _heartbeatMessage = clientHeartbeatMessage()
-  let _startHeartbeats = () => {
-    _heartbeatsInterval = setInterval(_sendHeartbeat, HEARTBEAT_INTERVAL)
-  }
-  let _stopHeartbeats = () => clearInterval(_heartbeatsInterval)
-  let _sendHeartbeat = () => {
-    if (_dealer) {
-      debug('Sending hearbeat')
-      _dealer.send(_heartbeatMessage)
-    }
-  }
-
-  // Requests dispatching
-  let _dispatchRequests = () => {
-    if (!_connected) return
-    _requestsUnassigned()
-      .forEach(request => {
-        request.assignee = true
-        _dealer.send(request.frames)
-      })
-  }
-  let _handleRequestsOnDisconnection = () => {
+  })
+  _connection.on('disconnection', () => {
+    let dispatchedRequests = _requestsDispatched()
     let idempotentRequests = _requestsIdempotent()
-    let notIdempotentRequests = without(_requests, ...idempotentRequests)
-
-    idempotentRequests.forEach(request => {
+    let couldRescheduleRequests = intersection(dispatchedRequests, idempotentRequests)
+    couldRescheduleRequests.forEach(request => {
       if (request.isClean || request.canReconnectStream) {
         request.reschedule()
       } else {
         request.signalLostWorker()
       }
     })
+    let abortingRequests = without(dispatchedRequests, ...idempotentRequests)
+    abortingRequests.forEach(request => request.signalLostWorker())
+    client.emit('disconnection')
+  })
 
-    notIdempotentRequests.forEach(request => request.signalLostWorker())
+  // Requests dispatching
+  let _dispatchRequests = () => {
+    _requestsNotDispatched()
+      .forEach(request => request.isDispatched = _connection.send(request.frames))
   }
 
   // Public API
-  function start () {
-    if (_running) return client
-    _running = true
-    process.nextTick(() => _attemptConnection())
-    debug('Start')
-    client.emit('start')
+  function activate () {
+    if (_active) return client
+    _active = true
+    _connection.activate()
     return client
   }
-  function stop () {
-    if (!_running) return client
-    _running = false
-    _requests.forEach(request => request.abort())
-
-    if (_connected) {
-      _onConnectionEnd()
-      debug('Sending disconnection message')
-      _dealer.send(clientDisconnectionMessage())
-      setTimeout(_tearDownDealer(), 500)
-    }
-
-    client.emit('stop')
+  function deactivate () {
+    if (!_active) return client
+    _active = false
+    _connection.deactivate()
     return client
   }
-  function request (service, body, reqOptions) {
+  function request (service, reqBody, reqOptions) {
     if (!service || !isString(service)) throw new Error('service MUST be a nonempty string')
-    let _eBody
-    let _body = body instanceof Buffer ? body : null
-    if (!_body) { try { _body = new Buffer(JSON.stringify(body)) } catch (e) { _eBody = e } }
-    if (!_body) { try { _body = new Buffer(body) } catch (e) { _eBody = e } }
-    if (!body) throw _eBody
+
+    let body = {}
+    try { body = isPlainObject(reqBody) ? JSON.stringify(reqBody) : body } catch (e) {}
 
     reqOptions = isPlainObject(reqOptions) ? reqOptions : {}
     let options = {...defaultRequestOptions, reqOptions}
@@ -378,7 +145,7 @@ const Client = (settings) => {
     let request = getClientRequestInstance({
       service,
       options,
-      body: _body,
+      body,
       onFinished: () => pull(_requests, request)
     })
 
@@ -388,8 +155,8 @@ const Client = (settings) => {
   }
 
   return Object.defineProperties(client, {
-    start: {value: start},
-    stop: {value: stop},
+    activate: {value: activate},
+    deactivate: {value: deactivate},
     request: {value: request}
   })
 }
@@ -412,7 +179,7 @@ function validateSettings (settings) {
     !isValidHostAndPort(endpoint) &&
     !isValidEndpoint(endpoint)
   ) throw new Error(endpointErrorMessage)
-  settings.dnsEndpoint = isValidHostAndPort(endpoint)
+  settings.haveHostAndPortEndpoint = isValidHostAndPort(endpoint)
 
   // Security
   if (security) {

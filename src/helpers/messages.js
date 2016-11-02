@@ -50,10 +50,10 @@ export let workerReadyMessage = (infos) => [
   CONSTANTS.W_READY,
   infos
 ]
-export let workerHeartbeatMessage = (concurrency) => [
+export let workerHeartbeatMessage = (infos) => [
   CONSTANTS.WORKER,
   CONSTANTS.W_HEARTBEAT,
-  concurrency
+  infos
 ]
 export let workerDisconnectMessage = () => [
   CONSTANTS.WORKER,

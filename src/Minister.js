@@ -202,9 +202,12 @@ const Minister = (settings) => {
     let worker = _workerById(msg[0])
     if (worker) {
       _monitor(worker)
-      let workerDeclaredConcurrency = JSON.parse(msg[3])
-      if (worker.concurrency !== workerDeclaredConcurrency) {
-        worker.concurrency = workerDeclaredConcurrency
+      let { concurrency, pendingRequests } = JSON.parse(msg[3])
+      if (
+        worker.concurrency !== concurrency ||
+        worker.pendingRequests !== pendingRequests
+      ) {
+        Object.assign(worker, {concurrency, pendingRequests})
         _broadcastWorkersAvailability()
       }
     }

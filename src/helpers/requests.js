@@ -1,6 +1,6 @@
 import stream from 'readable-stream'
 import uuid from 'uuid'
-import { curry, isInteger, noop } from 'lodash'
+import { curry, noop, isString } from 'lodash'
 import compose from 'lodash/fp/compose'
 import eqFp from 'lodash/fp/eq'
 import isEqualFp from 'lodash/fp/isEqual'
@@ -25,6 +25,8 @@ import {
 // Internals
 const requestIsNotAssigned = negateFp(getFp('assignee'))
 const requestIsAssigned = negateFp(requestIsNotAssigned)
+const requestIsNotDispatched = negateFp(getFp('isDispatched'))
+const requestIsDispatched = negateFp(requestIsNotDispatched)
 const requestIsIdempotent = getFp('isIdempotent')
 const getStakeholderType = compose(getFp('type'), getFp('stakeholder'))
 const getAssigneeType = compose(getFp('type'), getFp('assignee'))
@@ -156,6 +158,76 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
     }}
   })
 }
+export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinished}) => {
+  let _ended = false
+  let _ending = false
+  let _endingWithNull = false
+  let _isError = false
+  let _hasStakeholder = true
+
+  let request = Object.defineProperties({}, {
+    body: {value: {...body}, enumerable: true},
+    options: {value: {...options}, enumerable: true},
+    isActive: {get () { return _hasStakeholder }}
+  })
+
+  let response = new stream.Writable({
+    objectMode: true,
+    write (chunk, encoding, cb) {
+      cb()
+      if (_ended) return
+
+      if (_hasStakeholder) {
+        let body
+        try {
+          body = encoding === 'buffer'
+            ? chunk
+            : _isError
+              ? new Buffer(JSON.stringify(chunk))
+              : isString(chunk)
+                ? new Buffer(chunk)
+                : new Buffer(JSON.stringify(chunk))
+        } catch (e) {}
+        body = _endingWithNull ? null : (body || null)
+
+        let msg = _isError
+          ? workerErrorResponseMessage(uuid, body)
+          : _ending
+            ? workerFinalResponseMessage(uuid, body)
+            : workerPartialResponseMessage(uuid, body)
+        connection.send(msg)
+      }
+
+      if (_ending) {
+        _ended = true
+        onFinished()
+      }
+    }
+  })
+  let responseEnd = response.end
+  response.end = (chunk, encoding, cb) => {
+    _ending = true
+    if (chunk === undefined || chunk === null) {
+      chunk = ''
+      _endingWithNull = true
+    }
+    return responseEnd.apply(response, [chunk, encoding, cb])
+  }
+  response.send = (chunk) => response.end(chunk)
+  response.error = (chunk) => {
+    _isError = true
+    response.end(chunk)
+  }
+
+  return Object.defineProperties({}, {
+    uuid: {value: uuid},
+    request: {value: request},
+    response: {value: response},
+    lostStakeholder () {
+      _hasStakeholder = false
+    }
+  })
+}
 export let findRequestsByClientStakeholder = curry((requests, client) =>
   requests.filter(stakeholderIsClient).filter(compose(eqFp(client.id), getFp('id'), getFp('stakeholder'))))
 export let findRequestsByMinisterStakeholder = curry((requests, minister) =>
@@ -167,4 +239,6 @@ export let findRequestsByMinisterAssignee = curry((requests, minister) =>
 export let findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
 export let findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
 export let findAssignedRequests = (requests) => () => requests.filter(requestIsAssigned)
+export let findNotDispatchedRequests = (requests) => () => requests.filter(requestIsNotDispatched)
+export let findDispatchedRequests = (requests) => () => requests.filter(requestIsDispatched)
 export let findIdempotentRequests = (requests) => () => requests.filter(requestIsIdempotent)

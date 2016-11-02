@@ -7,7 +7,7 @@ import getFp from 'lodash/fp/get'
 const clientHasId = (clientId) => compose(isEqualFp(clientId), getFp('id'))
 
 // External
-const getClientInstance = ({router, id}) => {
+export let getClientInstance = ({router, id}) => {
   let client = {}
 
   return Object.defineProperties(client, {
@@ -18,9 +18,4 @@ const getClientInstance = ({router, id}) => {
   })
 }
 
-const findClientById = curry((clients, clientId) => clients.find(clientHasId(clientId)))
-
-export {
-  getClientInstance,
-  findClientById
-}
+export let findClientById = curry((clients, clientId) => clients.find(clientHasId(clientId)))
