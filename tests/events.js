@@ -2,14 +2,14 @@ import should from 'should/as-function'
 
 import M from '../src'
 
-describe('Minister events', function () {
-  it('emits `start` and `stop` events', (done) => {
+describe('MINISTER EVENTS', function () {
+  it('emits `start` and `stop`', (done) => {
     let minister = M.Minister()
     minister.on('start', () => minister.stop())
     minister.on('stop', () => done())
     minister.start()
   })
-  it('emits `client:connection`', (done) => {
+  it('emits `client:connection`, passing connected client infos: {id}', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'localhost:5555'})
     minister.on('client:connection', c => {
@@ -21,7 +21,7 @@ describe('Minister events', function () {
     minister.start()
     client.start()
   })
-  it('emits `client:disconnection`', (done) => {
+  it('emits `client:disconnection`, passing disconnected client infos: {id}', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'localhost:5555'})
     minister.on('client:disconnection', c => {
@@ -33,7 +33,7 @@ describe('Minister events', function () {
     client.on('connection', () => client.stop())
     client.start()
   })
-  it('emits `worker:connection`', (done) => {
+  it('emits `worker:connection`, passing connected worker infos: {id, service, latency}', (done) => {
     let minister = M.Minister()
     let worker = M.Worker({service: 'Test', endpoint: 'localhost:5555'})
     minister.on('worker:connection', w => {
@@ -47,7 +47,7 @@ describe('Minister events', function () {
     minister.start()
     worker.start()
   })
-  it('emits `worker:disconnection`', (done) => {
+  it('emits `worker:disconnection`, passing disconnected worker infos: {id, service, latency}', (done) => {
     let minister = M.Minister()
     let worker = M.Worker({service: 'Test', endpoint: 'localhost:5555'})
     minister.on('worker:disconnection', w => {
@@ -61,7 +61,7 @@ describe('Minister events', function () {
     worker.on('connection', () => worker.stop())
     worker.start()
   })
-  it('emits `minister:connection`', (done) => {
+  it('emits `minister:connection`, passing connected minister infos: {id, latency, endpoint}', (done) => {
     let minister = M.Minister()
     let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
     minister.on('minister:connection', m => {
@@ -75,7 +75,7 @@ describe('Minister events', function () {
     minister.start()
     minister2.start()
   })
-  it('emits `minister:disconnection`', (done) => {
+  it('emits `minister:disconnection`, passing disconnected minister infos: {id, latency, endpoint}', (done) => {
     let minister = M.Minister()
     let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
     minister.on('minister:connection', m => {
@@ -93,17 +93,21 @@ describe('Minister events', function () {
   })
 })
 
-describe('Client events', () => {
-  it('emits `start` and `stop` events', (done) => {
+describe('CLIENT EVENTS', () => {
+  it('emits `start` and `stop`', (done) => {
     let client = M.Client({endpoint: 'localhost:5555'})
     client.on('start', () => client.stop())
     client.on('stop', () => done())
     client.start()
   })
-  it('emits `connection`', (done) => {
+  it('emits `connection`, passing connected minister infos: {id, enpoint}', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'localhost:5555'})
-    client.on('connection', () => minister.stop())
+    client.on('connection', m => {
+      should(m.id).be.a.String()
+      should(m.endpoint).be.a.String()
+      minister.stop()
+    })
     minister.on('stop', () => {
       client.stop()
       done()
@@ -111,11 +115,15 @@ describe('Client events', () => {
     minister.start()
     client.start()
   })
-  it('emits `disconnection`', (done) => {
+  it('emits `disconnection`, passing disconnected minister infos: {id, enpoint}', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'localhost:5555'})
     client.on('connection', () => client.stop())
-    client.on('disconnection', () => minister.stop())
+    client.on('disconnection', m => {
+      should(m.id).be.a.String()
+      should(m.endpoint).be.a.String()
+      minister.stop()
+    })
     minister.on('stop', () => {
       done()
     })
@@ -124,17 +132,21 @@ describe('Client events', () => {
   })
 })
 
-describe('Worker events', () => {
-  it('emits `start` and `stop` events', (done) => {
+describe('WORKER EVENTS', () => {
+  it('emits `start` and `stop`', (done) => {
     let worker = M.Worker({service: 'Test', endpoint: 'localhost:5555'})
     worker.on('start', () => worker.stop())
     worker.on('stop', () => done())
     worker.start()
   })
-  it('emits `connection`', (done) => {
+  it('emits `connection`, passing connected minister infos: {id, enpoint}', (done) => {
     let minister = M.Minister()
     let worker = M.Worker({service: 'Test', endpoint: 'localhost:5555'})
-    worker.on('connection', () => minister.stop())
+    worker.on('connection', m => {
+      should(m.id).be.a.String()
+      should(m.endpoint).be.a.String()
+      minister.stop()
+    })
     minister.on('stop', () => {
       worker.stop()
       done()
@@ -142,11 +154,15 @@ describe('Worker events', () => {
     minister.start()
     worker.start()
   })
-  it('emits `disconnection`', (done) => {
+  it('emits `disconnection`, passing disconnected minister infos: {id, enpoint}', (done) => {
     let minister = M.Minister()
     let worker = M.Worker({service: 'Test', endpoint: 'localhost:5555'})
     worker.on('connection', () => worker.stop())
-    worker.on('disconnection', () => minister.stop())
+    worker.on('disconnection', m => {
+      should(m.id).be.a.String()
+      should(m.endpoint).be.a.String()
+      minister.stop()
+    })
     minister.on('stop', () => {
       done()
     })
