@@ -73,7 +73,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
   let _setupDealer = () => {
     if (_dealer) _tearDownDealer()
     _dealer = zmq.socket('dealer')
-    _dealer.linger = 1
+    _dealer.linger = 500
     _dealer.identity = `${_isClient ? 'MC' : 'MW'}-${uuid.v4()}`
 
     if (security) {
@@ -85,13 +85,13 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
       _dealer.curve_secretkey = clientKeys.secret
     }
 
-    debug(dMsg(`Dealer socket created`))
+    debug(dMsg(`dealer socket created`))
   }
   let _tearDownDealer = () => {
     if (!_dealer) return
     _dealer.close()
     _dealer = null
-    debug(dMsg(`Dealer socket destroyed`))
+    debug(dMsg(`dealer socket destroyed`))
   }
   let _subscribeToDealer = () => {
     // Collect a map of subscriptions
@@ -174,7 +174,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     let attemptNo = _attemptedConnections.length + 1
     if (!_active) {
       _attemptedConnections = []
-      return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because connection was deactivated`))
+      return debug(dMsg(`connection attempt N° ${attemptNo} blocked because connection was deactivated`))
     }
 
     _compilePhonebook()
@@ -194,9 +194,9 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
       .then(conn => {
         if (!_active) {
           _attemptedConnections = []
-          return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because client is not running`))
+          return debug(dMsg(`connection attempt N° ${attemptNo} blocked because client is not running`))
         }
-        if (_connected) return debug(dMsg(`Connection attempt N° ${attemptNo} blocked because connection was deactivated`))
+        if (_connected) return debug(dMsg(`connection attempt N° ${attemptNo} blocked because connection was deactivated`))
         if (conn) {
           _setupDealer()
           _subscribeToDealer()
@@ -204,10 +204,10 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
           _dealer.connect(conn.endpoint)
           _dealer.send(getInitialMessage(conn))
           _attemptedConnections.push(conn)
-          debug(dMsg(`Connection attempt N° ${attemptNo} started`))
+          debug(dMsg(`connection attempt N° ${attemptNo} started`))
           setTimeout(() => {
             if (!_connected && _active) {
-              debug(dMsg(`Connection attempt N° ${attemptNo} is taking too long. Trying next...`))
+              debug(dMsg(`connection attempt N° ${attemptNo} is taking too long. Trying next...`))
               _attemptConnection()
             }
           }, HEARTBEAT_INTERVAL)
@@ -221,8 +221,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _connection = last(_attemptedConnections)
     _connection.id = ministerId
     _attemptedConnections = []
-    _monitorConnection()
-    debug(dMsg(`Connected to minister ${ministerId} at ${_connection.endpoint}`))
+    debug(dMsg(`connected to minister ${_connection.id} at ${_connection.endpoint}`))
     _startHeartbeats()
     connection.emit('connection', {
       id: _connection.id,
@@ -233,7 +232,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _attemptedConnections = []
     _unsubscribeFromDealer()
     _tearDownDealer()
-    debug(dMsg(`Could not connect to any minister`))
+    debug(dMsg(`could not connect to any minister`))
     if (!DNSDiscovery) {
       _phoneBook.push(endpoint)
       _phoneBook = uniq(_phoneBook)
@@ -246,7 +245,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _unsubscribeFromDealer()
     _unmonitorConnection()
     _stopHeartbeats()
-    debug(dMsg(`Disconnected from minister at ${_connection.endpoint}`))
+    debug(dMsg(`disconnected from minister ${_connection.id} at ${_connection.endpoint}`))
     let disconnectedMinister = pick(_connection, ['id', 'endpoint'])
     _connected = false
     _connection = null
@@ -255,10 +254,10 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
   let _monitorConnection = () => {
     _unmonitorConnection()
     _connectionLiveness = HEARTBEAT_LIVENESS
-    // debug(eMsg`${_connectionLiveness} remaining lives for connection`)
+    debug(dMsg(`${_connectionLiveness} remaining lives for connection`))
     _connectionCheckInterval = setInterval(() => {
       _connectionLiveness--
-      // debug(eMsg`${_connectionLiveness} remaining lives for connection`)
+      debug(dMsg(`${_connectionLiveness} remaining lives for connection`))
       if (!_connectionLiveness) {
         _onConnectionEnd()
         _attemptConnection()
@@ -281,7 +280,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
   let _stopHeartbeats = () => clearInterval(_heartbeatsInterval)
   let _sendHeartbeat = () => {
     if (_dealer) {
-      debug(dMsg(`Sending hearbeat`))
+      debug(dMsg(`sending hearbeat`))
       _dealer.send(getHearbeatMessage())
     }
   }
@@ -292,7 +291,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     process.nextTick(() => {
       _attemptConnection()
     })
-    debug(dMsg(`Activated`))
+    debug(dMsg(`activated`))
     return connection
   }
   let deactivate = () => {
@@ -300,13 +299,13 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _active = false
 
     if (_connected) {
-      debug(dMsg(`Sending disconnection message to minister`))
+      debug(dMsg(`sending disconnection message to minister`))
       _dealer.send(getDisconnectMessage())
       _onConnectionEnd()
-      setTimeout(_tearDownDealer, 200)
+      _tearDownDealer()
     }
 
-    debug(dMsg(`Deactivated`))
+    debug(dMsg(`deactivated`))
     return connection
   }
   let send = (msg) => {

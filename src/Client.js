@@ -109,19 +109,24 @@ const Client = (settings) => {
     })
     let abortingRequests = without(dispatchedRequests, ...idempotentRequests)
     abortingRequests.forEach(request => request.lostWorker())
+    process.nextTick(() => _dispatchRequests())
     client.emit('disconnection', minister)
   })
 
   // Requests dispatching
   let _dispatchRequests = () => {
     _requestsNotDispatched()
-      .forEach(request => request.isDispatched = _connection.send(request.frames))
+      .forEach(request => {
+        request.isDispatched = _connection.send(request.frames)
+        if (request.isDispatched) debug(`Dispatched request ${request.shortId}`)
+      })
   }
 
   // Public API
   function start () {
     if (_active) return client
     _active = true
+    debug('Start')
     _connection.activate()
     client.emit('start')
     return client
@@ -130,6 +135,7 @@ const Client = (settings) => {
     if (!_active) return client
     _active = false
     _connection.deactivate()
+    debug('Stop')
     client.emit('stop')
     return client
   }
@@ -148,10 +154,12 @@ const Client = (settings) => {
       service,
       options,
       bodyBuffer: JSON.stringify({...reqBody}),
-      onFinished: () => pull(_requests, request)
+      onFinished: () => pull(_requests, request),
+      debug
     })
 
     _requests.push(request)
+    debug(`Created request ${request.shortId}`)
     process.nextTick(() => _dispatchRequests())
     return request.readableInterface
   }

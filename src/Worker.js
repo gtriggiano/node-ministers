@@ -94,6 +94,7 @@ const Worker = (settings) => {
   let start = () => {
     if (_active) return worker
     _active = true
+    debug('Start')
     _connection.activate()
     worker.emit('start')
     return worker
@@ -102,6 +103,7 @@ const Worker = (settings) => {
     if (!_active) return worker
     _active = false
     _connection.deactivate()
+    debug('Stop')
     worker.emit('stop')
     return worker
   }

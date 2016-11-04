@@ -34,16 +34,10 @@ const requestIsAssigned = negateFp(requestIsNotAssigned)
 const requestIsNotDispatched = negateFp(getFp('isDispatched'))
 const requestIsDispatched = negateFp(requestIsNotDispatched)
 const requestIsIdempotent = getFp('isIdempotent')
-const getStakeholderType = compose(getFp('type'), getFp('stakeholder'))
-const getAssigneeType = compose(getFp('type'), getFp('assignee'))
-const stakeholderIsClient = compose(isEqualFp('Client'), getStakeholderType)
-const stakeholderIsMinister = compose(isEqualFp('Minister'), getStakeholderType)
-const assigneeIsWorker = compose(isEqualFp('Worker'), getAssigneeType)
-const assigneeIsMinister = compose(isEqualFp('Minister'), getAssigneeType)
 const requestHasUUID = (uuid) => compose(isEqualFp(uuid), getFp('uuid'))
 
 // Exported
-export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, options, onFinished}) => {
+export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, options, onFinished, debug}) => {
   let request = {}
   let {idempotent, reconnectStream} = options
 
@@ -56,6 +50,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
 
   return Object.defineProperties(request, {
     uuid: {value: uuid},
+    shortId: {value: uuid.substring(0, 8)},
     service: {value: service},
     stakeholder: {get: () => _hasLostStakeholder ? null : stakeholder},
     frames: {value: frames},
@@ -98,9 +93,12 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     }}
   })
 }
-export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished}) => {
+export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished, debug}) => {
   let request = {}
   let readableInterface = new stream.Readable({read: noop})
+  // Let's prevent the `Uncaught Error` behaviour which could happen in case
+  // the user does not register an handler for the `error` event
+  readableInterface.on('error', noop)
   let {timeout, idempotent, reconnectStream} = options
 
   let _isClean = true
@@ -129,6 +127,7 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
 
   return Object.defineProperties(request, {
     uuid: {get: () => _uuid},
+    shortId: {get: () => _uuid.substring(0, 8)},
     isClean: {get: () => _isClean},
     isAccomplished: {get: () => _isAccomplished},
     isTimedout: {get: () => _isTimedout},
@@ -157,6 +156,7 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
       _isFinished = true
       _receivedBytes += buffer.length
       onFinished()
+      debug(`Request ${request.shortId} had final response`)
       readableInterface.push(buffer)
       readableInterface.push(null)
       options.finalCallback(null, buffer)
@@ -170,9 +170,10 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
       _isFailed = true
       _isFinished = true
       onFinished()
+      debug(`Request ${request.shortId} had error response: ${error}`)
       let errMsg = isString(error)
         ? error
-        : error.message || `request ${_uuid} failed`
+        : error.message || `request failed`
       let e = isString(error)
         ? new Error(errMsg)
         : Object.assign(
@@ -187,15 +188,18 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
     reschedule: {value: () => {
       if (_isFinished) return
       delete request.isDispatched
+      let oldId = request.shortId
       _uuid = uuid.v4()
+      debug(`Rescheduling request ${oldId} -> ${request.shortId}`)
       if (timeout && !_timeoutHandle) _setupTimeout()
     }},
     lostWorker: {value: () => {
+      debug(`Request ${request.shortId} lost connection with worker`)
       request.giveErrorResponse(RESPONSE_LOST_WORKER)
     }}
   })
 }
-export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinished}) => {
+export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinished, debug}) => {
   let _ended = false
   let _ending = false
   let _endingWithNull = false
@@ -226,7 +230,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
                 ? new Buffer(chunk)
                 : new Buffer(JSON.stringify(chunk))
         } catch (e) {}
-        body = _endingWithNull ? null : (body || null)
+        body = _endingWithNull ? new Buffer(0) : (body || new Buffer(0))
 
         let msg = _isError
           ? workerErrorResponseMessage(uuid, body)
@@ -260,6 +264,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
 
   return Object.defineProperties({}, {
     uuid: {value: uuid},
+    shortId: {value: uuid.substring(0, 8)},
     request: {value: request},
     response: {value: response},
     lostStakeholder: {value: () => {
@@ -269,14 +274,11 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     }}
   })
 }
-export let findRequestsByClientStakeholder = curry((requests, client) =>
-  requests.filter(stakeholderIsClient).filter(compose(eqFp(client.id), getFp('id'), getFp('stakeholder'))))
-export let findRequestsByMinisterStakeholder = curry((requests, minister) =>
-  requests.filter(stakeholderIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('stakeholder'))))
-export let findRequestsByWorkerAssignee = curry((requests, worker) =>
-  requests.filter(assigneeIsWorker).filter(compose(eqFp(worker.id), getFp('id'), getFp('assignee'))))
-export let findRequestsByMinisterAssignee = curry((requests, minister) =>
-  requests.filter(assigneeIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('assignee'))))
+
+export let findRequestsByStakeholder = curry((requests, stakeholder) =>
+  requests.filter(compose(eqFp(stakeholder.id), getFp('id'), getFp('stakeholder'))))
+export let findRequestsByAssignee = curry((requests, assignee) =>
+  requests.filter(compose(eqFp(assignee.id), getFp('id'), getFp('assignee'))))
 export let findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
 export let findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
 export let findAssignedRequests = (requests) => () => requests.filter(requestIsAssigned)

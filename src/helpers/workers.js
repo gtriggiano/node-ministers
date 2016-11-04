@@ -14,7 +14,7 @@ export let getWorkerInstance = ({router, id, service, concurrency, latency}) => 
   }
 
   return Object.defineProperties(worker, {
-    type: {value: 'Worker'},
+    type: {value: 'worker'},
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
     service: {value: service, enumerable: true},
@@ -31,10 +31,10 @@ export let getWorkerInstance = ({router, id, service, concurrency, latency}) => 
   })
 }
 
-export let findWorkerById = curry((workers, workerId) => workers.find(workerHasId(workerId)))
-
-export let workerDoesService = (service) => compose(isEqualFp(service), getFp('service'))
-
+export let findWorkerById = curry((workers, workerId) =>
+  workers.find(workerHasId(workerId)))
+export let workerDoesService = (service) =>
+  compose(isEqualFp(service), getFp('service'))
 export let findWorkerForService = curry((workers, service) =>
   workers.filter(workerDoesService(service)).sort((w1, w2) => {
     let slots1 = w1.freeSlots
@@ -49,5 +49,4 @@ export let findWorkerForService = curry((workers, service) =>
           : w1.latency > w2.latency
             ? 1
             : 0
-  })[0]
-)
+  })[0])

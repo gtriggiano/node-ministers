@@ -18,20 +18,15 @@ import {
 
 // Internals
 const concatPortToIPs = curry((port, ips) => ips.map(ip => `${ip}:${port}`))
-
 const prependTransportToAddresses = curry((transport, addresses) => addresses.map(address => `${transport}://${address}`))
-
 const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
   dns.lookup(host, {family: 4, all: true}, (err, addresses) => {
     if (err) return reject(err)
     resolve(addresses.map(({address}) => address))
   })
 })
-
 const ministerHasId = (ministerId) => compose(isEqualFp(ministerId), getFp('id'))
-
 const filterEndpointsDifferentFrom = (endpoint) => filterFp(negateFp(isEqualFp(endpoint)))
-
 const ministerDoesService = curry((service, minister) =>
   !!~minister.workers.map(({service}) => service).indexOf(service)
 )
@@ -43,7 +38,7 @@ export let getMinisterInstance = ({router, id, latency, endpoint}) => {
   }
 
   return Object.defineProperties(minister, {
-    type: {value: 'Minister'},
+    type: {value: 'minister'},
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
     latency: {value: latency, enumerable: true},
@@ -61,7 +56,6 @@ export let getMinisterInstance = ({router, id, latency, endpoint}) => {
 }
 
 export let findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
-
 export let findMinisterForService = curry((ministers, service) =>
   ministers.filter(ministerDoesService(service)).sort((m1, m2) => {
     let slots1 = m1.slotsForService(service)
@@ -78,14 +72,12 @@ export let findMinisterForService = curry((ministers, service) =>
             : 0
   })[0]
 )
-
 export let discoverMinistersEndpoints = ({host, port, excludedEndpoint}) =>
   discoverMinistersIPsByHost(host)
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
   .then(filterEndpointsDifferentFrom(excludedEndpoint))
   .catch(() => [])
-
 export let getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let { ip, port } = parseEndpoint(ministerEndpoint)
   tcpPing.probe(ip, port, (err, available) => {
