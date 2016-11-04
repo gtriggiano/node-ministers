@@ -91,10 +91,6 @@ import {
   findUnassignedRequests,
   findRequestsByStakeholder,
   findRequestsByAssignee,
-  // findRequestsByClientStakeholder,
-  // findRequestsByMinisterStakeholder,
-  // findRequestsByWorkerAssignee,
-  // findRequestsByMinisterAssignee,
   findRequestByUUID
 } from './helpers/requests'
 
