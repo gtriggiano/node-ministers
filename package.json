@@ -8,7 +8,8 @@
     "stop": "docker-compose stop",
     "rm": "docker-compose rm -f",
     "clean": "npm run stop && npm run rm",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "mocha --compilers js:babel-register tests",
+    "test:watch": "mocha --compilers js:babel-register -w tests",
     "prepublish": "docker-compose up distribution",
     "i:transpile": "rm -rf lib/* && babel --no-comments src -d lib",
     "i:playground": "DEBUG=ministers:* babel-node playground.js"
@@ -31,6 +32,16 @@
     "microservices",
     "ministers"
   ],
+  "standard": {
+    "globals": [
+      "describe",
+      "it",
+      "before",
+      "beforeEach",
+      "after",
+      "afterEach"
+    ]
+  },
   "author": "Giacomo Triggiano <giacomotriggiano@gmail.com> (http://github.com/gtriggiano)",
   "license": "MIT",
   "dependencies": {
@@ -49,6 +60,8 @@
   "devDependencies": {
     "babel-cli": "^6.16.0",
     "babel-plugin-transform-object-rest-spread": "^6.16.0",
-    "babel-preset-es2015": "^6.16.0"
+    "babel-preset-es2015": "^6.16.0",
+    "mocha": "^3.1.2",
+    "should": "^11.1.1"
   }
 }
