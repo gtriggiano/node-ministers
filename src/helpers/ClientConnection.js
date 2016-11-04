@@ -10,7 +10,8 @@ import {
   head,
   last,
   uniq,
-  each
+  each,
+  pick
 } from 'lodash'
 import sortByFp from 'lodash/fp/sortBy'
 import getFp from 'lodash/fp/get'
@@ -26,7 +27,8 @@ import {
   isWorkerFinalResponse,
   isWorkerErrorResponse,
   isMinisterHeartbeat,
-  isMinisterDisconnect
+  isMinisterDisconnect,
+  isMinisterRequestLostStakeholder
 } from './messages'
 
 // Utils
@@ -48,16 +50,16 @@ import {
 
 let dMsg = prefixString('Connection interface: ')
 
-export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug, getInitialMessage, getHearbeatMessage, getDisconnectionMessage}) {
+export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug, getInitialMessage, getHearbeatMessage, getDisconnectMessage}) {
   let connection = new EventEmitter()
 
   let _active = false
   let _connected = false
   let _isClient = type === 'Client'
 
-  let _onMinisterHeartbeat = () => {
+  let _onMinisterHeartbeat = (msg) => {
     if (!_active) return
-    if (!_connected) _onConnectionSuccess()
+    if (!_connected) _onConnectionSuccess(msg[2] && msg[2].toString())
   }
   let _onMinisterDisconnect = (msg) => {
     _phoneBook = JSON.parse(msg[2])
@@ -138,6 +140,11 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
             let body = msg[5] && JSON.parse(msg[5])
             connection.emit('client:request', {uuid, options, body})
           })
+        subscriptions.ministerRequestLostStakeholder = ministerMessages
+          .filter(isMinisterRequestLostStakeholder).subscribe(msg => {
+            let uuid = msg[2] && msg[2].toString()
+            connection.emit('request:lost:stakeholder', {uuid})
+          })
         break
     }
 
@@ -209,14 +216,18 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
         }
       })
   }
-  let _onConnectionSuccess = () => {
+  let _onConnectionSuccess = (ministerId) => {
     _connected = true
     _connection = last(_attemptedConnections)
+    _connection.id = ministerId
     _attemptedConnections = []
     _monitorConnection()
-    debug(dMsg(`Connected to a minister at ${_connection.endpoint}`))
+    debug(dMsg(`Connected to minister ${ministerId} at ${_connection.endpoint}`))
     _startHeartbeats()
-    connection.emit('connection')
+    connection.emit('connection', {
+      id: _connection.id,
+      endpoint: _connection.endpoint
+    })
   }
   let _onConnectionFail = () => {
     _attemptedConnections = []
@@ -231,13 +242,15 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     if (_active) setTimeout(_attemptConnection, 1000)
   }
   let _onConnectionEnd = () => {
+    if (!_connected) return
     _unsubscribeFromDealer()
     _unmonitorConnection()
     _stopHeartbeats()
     debug(dMsg(`Disconnected from minister at ${_connection.endpoint}`))
+    let disconnectedMinister = pick(_connection, ['id', 'endpoint'])
     _connected = false
     _connection = null
-    connection.emit('disconnection')
+    connection.emit('disconnection', disconnectedMinister)
   }
   let _monitorConnection = () => {
     _unmonitorConnection()
@@ -279,7 +292,7 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     process.nextTick(() => {
       _attemptConnection()
     })
-    debug(dMsg(`activated`))
+    debug(dMsg(`Activated`))
     return connection
   }
   let deactivate = () => {
@@ -287,13 +300,13 @@ export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug
     _active = false
 
     if (_connected) {
+      debug(dMsg(`Sending disconnection message to minister`))
+      _dealer.send(getDisconnectMessage())
       _onConnectionEnd()
-      debug(dMsg(`sending disconnection message to minister`))
-      _dealer.send(getDisconnectionMessage())
       setTimeout(_tearDownDealer, 200)
     }
 
-    debug(dMsg(`deactivated`))
+    debug(dMsg(`Deactivated`))
     return connection
   }
   let send = (msg) => {

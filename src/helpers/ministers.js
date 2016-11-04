@@ -39,16 +39,16 @@ const ministerDoesService = curry((service, minister) =>
 // Exported
 export let getMinisterInstance = ({router, id, latency, endpoint}) => {
   let minister = {
-    workers: [],
-    assignedRequests: 0
+    workers: []
   }
 
   return Object.defineProperties(minister, {
-    type: {value: 'Minister', enumerable: true},
+    type: {value: 'Minister'},
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
     latency: {value: latency, enumerable: true},
     endpoint: {value: endpoint, enumerable: true},
+    toJS: {value: () => ({id, latency, endpoint, workers: minister.workers})},
     send: {value: (frames) => router.send([id, ...frames])},
     hasSlotsForService: {value: (service) =>
       minister.workers

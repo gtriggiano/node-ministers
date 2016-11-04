@@ -19,6 +19,7 @@ export const M_HELLO = '1'
 export const M_HEARTBEAT = '2'
 export const M_WORKERS_AVAILABILITY = '3'
 export const M_DISCONNECT = '4'
+export const M_REQUEST_LOST_STAKEHOLDER = '5'
 
 export const MN_NEW_MINISTER_CONNECTED = '1'
 

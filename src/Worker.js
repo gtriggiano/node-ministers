@@ -25,7 +25,8 @@ import {
 
 // Requests
 import {
-  getWorkerRequestInstance
+  getWorkerRequestInstance,
+  findRequestByUUID
 } from './helpers/requests'
 
 import { ClientConnection } from './helpers/ClientConnection'
@@ -55,9 +56,10 @@ const Worker = (settings) => {
       concurrency: _concurrency,
       pendingRequests: _requests.length
     })),
-    getDisconnectionMessage: workerDisconnectMessage
+    getDisconnectMessage: workerDisconnectMessage
   })
   let _requests = []
+  let _requestByUUID = findRequestByUUID(_requests)
 
   _connection.on('client:request', ({uuid, options, body}) => {
     let instance = getWorkerRequestInstance({
@@ -65,17 +67,27 @@ const Worker = (settings) => {
       uuid,
       options,
       body,
-      onFinished: () => pull(_requests, instance)
+      onFinished: () => {
+        pull(_requests, instance)
+        _connection.send(workerHeartbeatMessage(JSON.stringify({
+          concurrency: _concurrency,
+          pendingRequests: _requests.length
+        })))
+      }
     })
     _requests.push(instance)
     worker.emit('request', instance.request, instance.response)
   })
-  _connection.on('connection', () => {
-    worker.emit('connection')
+  _connection.on('request:lost:stakeholder', ({uuid}) => {
+    let request = _requestByUUID(uuid)
+    if (request) request.lostStakeholder()
   })
-  _connection.on('disconnection', () => {
+  _connection.on('connection', (minister) => {
+    worker.emit('connection', minister)
+  })
+  _connection.on('disconnection', minister => {
     _requests.forEach(request => request.lostStakeholder())
-    worker.emit('disconnection')
+    worker.emit('disconnection', minister)
   })
 
   // Public API
@@ -83,12 +95,14 @@ const Worker = (settings) => {
     if (_active) return worker
     _active = true
     _connection.activate()
+    worker.emit('start')
     return worker
   }
   let stop = () => {
     if (!_active) return worker
     _active = false
     _connection.deactivate()
+    worker.emit('stop')
     return worker
   }
 
@@ -98,7 +112,13 @@ const Worker = (settings) => {
     concurrency: {
       get () { return _concurrency },
       set (val) {
-        if (isInteger(val)) _concurrency = val
+        if (isInteger(val)) {
+          _concurrency = val
+          _connection.send(workerHeartbeatMessage(JSON.stringify({
+            concurrency: _concurrency,
+            pendingRequests: _requests.length
+          })))
+        }
         return _concurrency
       }
     }

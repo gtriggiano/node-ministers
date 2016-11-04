@@ -4,9 +4,11 @@ import {
   isPlainObject,
   isInteger,
   isString,
+  isFunction,
   pull,
   without,
-  intersection
+  intersection,
+  noop
 } from 'lodash'
 
 // Utils
@@ -22,7 +24,7 @@ import {
 import {
   clientHelloMessage,
   clientHeartbeatMessage,
-  clientDisconnectionMessage
+  clientDisconnectMessage
 } from './helpers/messages'
 
 // Requests
@@ -45,7 +47,7 @@ const Client = (settings) => {
   let debug = D('ministers:client')
   let client = new EventEmitter()
 
-  let _settings = {...defaultSettings, ...settings}
+  let _settings = {...settings}
   validateSettings(_settings)
 
   // Private API
@@ -58,7 +60,7 @@ const Client = (settings) => {
     debug,
     getInitialMessage: clientHelloMessage,
     getHearbeatMessage: clientHeartbeatMessage,
-    getDisconnectionMessage: clientDisconnectionMessage
+    getDisconnectMessage: clientDisconnectMessage
   })
 
   // Requests
@@ -90,11 +92,11 @@ const Client = (settings) => {
       request.giveErrorResponse(error)
     }
   })
-  _connection.on('connection', () => {
+  _connection.on('connection', (minister) => {
     _dispatchRequests()
-    client.emit('connection')
+    client.emit('connection', minister)
   })
-  _connection.on('disconnection', () => {
+  _connection.on('disconnection', minister => {
     let dispatchedRequests = _requestsDispatched()
     let idempotentRequests = _requestsIdempotent()
     let couldRescheduleRequests = intersection(dispatchedRequests, idempotentRequests)
@@ -102,12 +104,12 @@ const Client = (settings) => {
       if (request.isClean || request.canReconnectStream) {
         request.reschedule()
       } else {
-        request.signalLostWorker()
+        request.lostWorker()
       }
     })
     let abortingRequests = without(dispatchedRequests, ...idempotentRequests)
-    abortingRequests.forEach(request => request.signalLostWorker())
-    client.emit('disconnection')
+    abortingRequests.forEach(request => request.lostWorker())
+    client.emit('disconnection', minister)
   })
 
   // Requests dispatching
@@ -121,31 +123,31 @@ const Client = (settings) => {
     if (_active) return client
     _active = true
     _connection.activate()
+    client.emit('start')
     return client
   }
   function stop () {
     if (!_active) return client
     _active = false
     _connection.deactivate()
+    client.emit('stop')
     return client
   }
   function request (service, reqBody, reqOptions) {
     if (!service || !isString(service)) throw new Error('service MUST be a nonempty string')
 
-    let body = {}
-    try { body = isPlainObject(reqBody) ? JSON.stringify(reqBody) : JSON.stringify(body) } catch (e) {}
-
-    reqOptions = isPlainObject(reqOptions) ? reqOptions : {}
     let options = {...defaultRequestOptions, ...reqOptions}
     options.timeout = isInteger(options.timeout) && options.timeout > 0
       ? options.timeout : 0
     options.idempotent = !!options.idempotent
     options.reconnectStream = !!options.reconnectStream
+    if (!isFunction(options.partialCallback)) options.partialCallback = noop
+    if (!isFunction(options.finalCallback)) options.finalCallback = noop
 
     let request = getClientRequestInstance({
       service,
       options,
-      body,
+      bodyBuffer: JSON.stringify({...reqBody}),
       onFinished: () => pull(_requests, request)
     })
 
@@ -160,8 +162,6 @@ const Client = (settings) => {
     request: {value: request}
   })
 }
-
-let defaultSettings = {}
 
 let defaultRequestOptions = {
   timeout: 60000,

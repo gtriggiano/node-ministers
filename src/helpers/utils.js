@@ -3,6 +3,7 @@ import os from 'os'
 import nacl from 'tweetnacl'
 import z85 from 'z85'
 import zmq from 'zmq'
+import Promise from 'bluebird'
 import { curry, isInteger, isString } from 'lodash'
 
 // Exported
@@ -65,4 +66,13 @@ export let parseEndpoint = (endpoint) => {
     ip,
     port: parseInt(port, 10)
   }
+}
+
+export let defer = () => {
+  let resolve, reject
+  let promise = new Promise((rs, rj) => {
+    resolve = rs
+    reject = rj
+  })
+  return {resolve, reject, promise}
 }

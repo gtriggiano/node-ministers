@@ -11,10 +11,11 @@ export let getClientInstance = ({router, id}) => {
   let client = {}
 
   return Object.defineProperties(client, {
-    type: {value: 'Client', enumerable: true},
+    type: {value: 'Client'},
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
-    send: {value: (frames) => router.send([id, ...frames])}
+    send: {value: (frames) => router.send([id, ...frames])},
+    toJS: {value: () => ({id})}
   })
 }
 

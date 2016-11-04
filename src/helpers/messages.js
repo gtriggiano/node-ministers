@@ -21,6 +21,7 @@ export let isMinisterHello = msg => msg[1] === CONSTANTS.M_HELLO
 export let isMinisterHeartbeat = msg => msg[1] === CONSTANTS.M_HEARTBEAT
 export let isMinisterWorkersAvailability = msg => msg[1] === CONSTANTS.M_WORKERS_AVAILABILITY
 export let isMinisterDisconnect = msg => msg[1] === CONSTANTS.M_DISCONNECT
+export let isMinisterRequestLostStakeholder = msg => msg[1] === CONSTANTS.M_REQUEST_LOST_STAKEHOLDER
 
 export let isMinisterNotifierNewMinisterConnected = msg => msg[1] === CONSTANTS.MN_NEW_MINISTER_CONNECTED
 
@@ -83,9 +84,10 @@ export let ministerHelloMessage = (infos) => [
   CONSTANTS.M_HELLO,
   infos
 ]
-export let ministerHeartbeatMessage = () => [
+export let ministerHeartbeatMessage = (ministerUUID) => [
   CONSTANTS.MINISTER,
-  CONSTANTS.M_HEARTBEAT
+  CONSTANTS.M_HEARTBEAT,
+  ministerUUID
 ]
 export let ministerWorkersAvailabilityMessage = (workers) => [
   CONSTANTS.MINISTER,
@@ -96,6 +98,11 @@ export let ministerDisconnectMessage = (altentativeMinistersEndpoints) => [
   CONSTANTS.MINISTER,
   CONSTANTS.M_DISCONNECT,
   altentativeMinistersEndpoints
+]
+export let ministerRequestLostStakeholder = (reqUUID) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_REQUEST_LOST_STAKEHOLDER,
+  reqUUID
 ]
 
 export let notifierNewMinisterConnectedMessage = (infos) => [

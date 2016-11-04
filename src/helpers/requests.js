@@ -7,6 +7,10 @@ import isEqualFp from 'lodash/fp/isEqual'
 import negateFp from 'lodash/fp/negate'
 import getFp from 'lodash/fp/get'
 
+import {
+  defer
+} from './utils'
+
 // Constants
 import {
   RESPONSE_TIMEOUT,
@@ -19,7 +23,9 @@ import {
 
   workerPartialResponseMessage,
   workerFinalResponseMessage,
-  workerErrorResponseMessage
+  workerErrorResponseMessage,
+
+  ministerRequestLostStakeholder
 } from './messages'
 
 // Internals
@@ -59,11 +65,15 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     isClean: {get: () => _isClean},
     isIdempotent: {value: idempotent},
     canReconnectStream: {value: reconnectStream},
-    lostStakeholder: {value: () => { _hasLostStakeholder = true }},
+    lostStakeholder: {value: () => {
+      if (_hasLostStakeholder) return
+      _hasLostStakeholder = true
+      if (request.assignee) request.assignee.send(ministerRequestLostStakeholder(uuid))
+    }},
     lostWorker: {value: () => {
       if (_hasLostWorker) return
       _hasLostWorker = true
-      request.sendErrorResponse(RESPONSE_LOST_WORKER)
+      request.sendErrorResponse(JSON.stringify(RESPONSE_LOST_WORKER))
     }},
     sendPartialResponse: {value: (body) => {
       if (_isFinished) return
@@ -88,8 +98,9 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     }}
   })
 }
-export let getClientRequestInstance = ({service, body, options, onFinished}) => {
-  let request = {readableInterface: new stream.Readable({read: noop})}
+export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished}) => {
+  let request = {}
+  let readableInterface = new stream.Readable({read: noop})
   let {timeout, idempotent, reconnectStream} = options
 
   let _isClean = true
@@ -100,6 +111,7 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
   let _receivedBytes = 0
   let _uuid = uuid.v4()
   let _options = JSON.stringify(options)
+  let _deferred
 
   let _timeoutHandle
   let _setupTimeout = () => _timeoutHandle = setTimeout(() => {
@@ -107,6 +119,13 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
     request.giveErrorResponse(RESPONSE_TIMEOUT)
   }, timeout)
   if (timeout) _setupTimeout()
+
+  Object.defineProperty(readableInterface, 'promise', {
+    value: () => {
+      _deferred = _deferred || defer()
+      return _deferred.promise
+    }
+  })
 
   return Object.defineProperties(request, {
     uuid: {get: () => _uuid},
@@ -118,42 +137,60 @@ export let getClientRequestInstance = ({service, body, options, onFinished}) => 
     receivedBytes: {get: () => _receivedBytes},
     isIdempotent: {value: idempotent},
     canReconnectStream: {value: reconnectStream},
-    frames: {get: () => clientRequestMessage(_uuid, service, _options, body)},
+    readableInterface: {value: readableInterface},
+    frames: {get: () => clientRequestMessage(_uuid, service, _options, bodyBuffer)},
     givePartialResponse: {value: (buffer) => {
       if (_isFinished) return
       clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
       _isClean = false
       _receivedBytes += buffer.length
-      request.readableInterface.push(buffer)
+      readableInterface.push(buffer)
+      options.partialCallback(buffer)
     }},
     giveFinalResponse: {value: (buffer) => {
       if (_isFinished) return
       clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
       _isClean = false
       _isAccomplished = true
       _isFinished = true
       _receivedBytes += buffer.length
       onFinished()
-      request.readableInterface.push(buffer)
-      request.readableInterface.push(null)
+      readableInterface.push(buffer)
+      readableInterface.push(null)
+      options.finalCallback(null, buffer)
+      if (_deferred) _deferred.resolve(buffer)
     }},
-    giveErrorResponse: {value: (buffer) => {
+    giveErrorResponse: {value: (error) => {
       if (_isFinished) return
       clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
       _isClean = false
       _isFailed = true
       _isFinished = true
       onFinished()
-      request.readableInterface.emit('error', new Error(buffer))
-      request.readableInterface.push(null)
+      let errMsg = isString(error)
+        ? error
+        : error.message || `request ${_uuid} failed`
+      let e = isString(error)
+        ? new Error(errMsg)
+        : Object.assign(
+          new Error(errMsg),
+          error
+        )
+      readableInterface.emit('error', e)
+      readableInterface.push(null)
+      options.finalCallback(e)
+      if (_deferred) _deferred.reject(e)
     }},
     reschedule: {value: () => {
       if (_isFinished) return
       delete request.isDispatched
-      _uuid = new Buffer(uuid.v4())
+      _uuid = uuid.v4()
       if (timeout && !_timeoutHandle) _setupTimeout()
     }},
-    signalLostWorker: {value: () => {
+    lostWorker: {value: () => {
       request.giveErrorResponse(RESPONSE_LOST_WORKER)
     }}
   })
@@ -163,12 +200,12 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
   let _ending = false
   let _endingWithNull = false
   let _isError = false
-  let _hasStakeholder = true
+  let _isActive = true
 
   let request = Object.defineProperties({}, {
     body: {value: {...body}, enumerable: true},
     options: {value: {...options}, enumerable: true},
-    clientIsActive: {get () { return _hasStakeholder }}
+    isActive: {get () { return _isActive }}
   })
 
   let response = new stream.Writable({
@@ -178,7 +215,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
 
       if (_ended) return
 
-      if (_hasStakeholder) {
+      if (_isActive) {
         let body
         try {
           body = encoding === 'buffer'
@@ -225,11 +262,11 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     uuid: {value: uuid},
     request: {value: request},
     response: {value: response},
-    lostStakeholder () {
-      _hasStakeholder = false
+    lostStakeholder: {value: () => {
+      _isActive = false
       response.on('error', noop)
       process.nextTick(() => response.end())
-    }
+    }}
   })
 }
 export let findRequestsByClientStakeholder = curry((requests, client) =>

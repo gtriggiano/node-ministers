@@ -49,13 +49,14 @@ import {
   isWorkerErrorResponse,
 
   isMinisterHello,
-  ministerHeartbeatMessage,
   isMinisterWorkersAvailability,
   isMinisterDisconnect,
+  isMinisterRequestLostStakeholder,
 
   isMinisterNotifierNewMinisterConnected,
 
   ministerHelloMessage,
+  ministerHeartbeatMessage,
   ministerWorkersAvailabilityMessage,
   ministerDisconnectMessage,
 
@@ -72,7 +73,6 @@ import {
 import {
   getWorkerInstance,
   findWorkerById,
-  workerToState,
   findWorkerForService
 } from './helpers/workers'
 
@@ -113,7 +113,7 @@ const Minister = (settings) => {
   let _connected = false
   let _togglingConnection = false
   let _heartbeatsInterval
-  let _heartbeatMessage = ministerHeartbeatMessage()
+  let _heartbeatMessage = []
   let _requestAssigningInterval
 
   let _clients = []
@@ -148,7 +148,7 @@ const Minister = (settings) => {
       _clients.push(client)
       client.send(_heartbeatMessage)
       debug(`New connected client ${client.name}`)
-      minister.emit('client:connection', client)
+      minister.emit('client:connection', client.toJS())
     }
   }
   let _onClientHeartbeat = (msg) => {
@@ -196,7 +196,8 @@ const Minister = (settings) => {
       _workers.push(worker)
       worker.send(_heartbeatMessage)
       _broadcastWorkersAvailability()
-      minister.emit('worker:connection', worker.id, worker.service)
+      debug(`New connected worker ${worker.name}`)
+      minister.emit('worker:connection', {...worker})
     }
   }
   let _onWorkerHeartbeat = (msg) => {
@@ -233,7 +234,6 @@ const Minister = (settings) => {
   let _onWorkerFinalResponse = (msg) => {
     let sender = _workerById(msg[0]) || _ministerById(msg[0])
     if (sender) {
-      sender.assignedRequests--
       _monitor(sender)
       let uuid = msg[3].toString()
       let request = _requestByUUID(uuid)
@@ -246,7 +246,6 @@ const Minister = (settings) => {
   let _onWorkerErrorResponse = (msg) => {
     let sender = _workerById(msg[0]) || _ministerById(msg[0])
     if (sender) {
-      sender.assignedRequests--
       _monitor(sender)
       let uuid = msg[3].toString()
       let request = _requestByUUID(uuid)
@@ -282,7 +281,7 @@ const Minister = (settings) => {
       debug(`Minister name: ${m.name}`)
       debug(`Minister latency: ${m.latency} milliseconds\n`)
 
-      minister.emit('minister:connection', m)
+      minister.emit('minister:connection', {...m})
     }
   }
   let _onMinisterWorkersAvailability = (msg) => {
@@ -296,6 +295,11 @@ const Minister = (settings) => {
   let _onMinisterDisconnect = (msg) => {
     let minister = _ministerById(msg[0])
     if (minister) _onMinisterLost(minister)
+  }
+  let _onMinisterRequestLostStakeholder = (msg) => {
+    let uuid = msg[3].toString()
+    let request = _requestByUUID(uuid)
+    if (request) request.lostStakeholder()
   }
   // MinisterNotifier messages
   let _onNewMinisterConnected = (msg) => {
@@ -463,6 +467,8 @@ const Minister = (settings) => {
     subscriptions.ministerWorkersAvailability = ministerMessages
       .filter(compose(isMinisterWorkersAvailability, tail)).subscribe(_onMinisterWorkersAvailability)
     subscriptions.ministerDisconnect = ministerMessages.filter(compose(isMinisterDisconnect, tail)).subscribe(_onMinisterDisconnect)
+    subscriptions.ministerInactiveRequest = ministerMessages
+      .filter(compose(isMinisterRequestLostStakeholder, tail)).subscribe(_onMinisterRequestLostStakeholder)
 
     subscriptions.ministerNotifierNewMinisterConnected = ministerNotifierMessages
       .filter(compose(isMinisterNotifierNewMinisterConnected, tail)).subscribe(_onNewMinisterConnected)
@@ -503,12 +509,13 @@ const Minister = (settings) => {
   let _onClientLost = (client) => {
     _unmonitor(client)
     let pendingReceivedRequests = _requestsFromClient(client)
+    debug(`Lost connection with client ${client.name}.`)
+    debug(`Discarded ${pendingReceivedRequests.length} received requests.`)
+
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pull(_requests, ...pendingReceivedRequests)
     pull(_clients, client)
-    debug(`Lost connection with client ${client.name}.`)
-    debug(`Discarded ${pendingReceivedRequests.length} requests.`)
-    minister.emit('client:disconnection', client.id)
+    minister.emit('client:disconnection', client.toJS())
   }
   let _onWorkerLost = (worker) => {
     _unmonitor(worker)
@@ -518,7 +525,7 @@ const Minister = (settings) => {
     pendingAssignedRequests.forEach(request => request.lostWorker())
     pull(_requests, ...pendingAssignedRequests)
     pull(_workers, worker)
-    minister.emit('worker:disconnection', worker.id, worker.service)
+    minister.emit('worker:disconnection', worker.toJS())
   }
   let _onMinisterLost = (m) => {
     _unmonitor(m)
@@ -532,7 +539,7 @@ const Minister = (settings) => {
     pendingAssignedRequests.forEach(request => request.lostWorker())
     pull(_requests, ...pendingReceivedRequests, ...pendingAssignedRequests)
     pull(_ministers, m)
-    minister.emit('minister:disconnection', m.id, m.endpoint)
+    minister.emit('minister:disconnection', m.toJS())
   }
   let _presentToMinisters = () => {
     let getMinistersEndpoints
@@ -598,9 +605,7 @@ const Minister = (settings) => {
   let _broadcastWorkersAvailability = () => {
     debug(`Broadcasting workers availability to ${_ministers.length} ministers`)
     let workersAvailabilityMessage = ministerWorkersAvailabilityMessage(
-      JSON.stringify(
-        _workers.map(workerToState)
-      )
+      JSON.stringify(_workers.map(w => w.toJS()))
     )
     _ministers.forEach(minister => minister.send(workersAvailabilityMessage))
   }
@@ -628,7 +633,6 @@ const Minister = (settings) => {
         if (assignee) {
           assignee.send(request.frames)
           request.assignee = assignee
-          assignee.assignedRequests++
         }
       })
   }
@@ -636,8 +640,9 @@ const Minister = (settings) => {
   // Public API
   function start () {
     if (_connected || _togglingConnection) return minister
-    debug('Starting...')
+    debug('Starting')
     if (_setupBindingRouter()) {
+      _heartbeatMessage = ministerHeartbeatMessage(_bindingRouter.identity)
       _setupConnectingRouter()
       _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
       _unsubscribeFromConnectingRouter = _observeRouter(_connectingRouter, false)
@@ -651,11 +656,7 @@ const Minister = (settings) => {
       _heartbeatsInterval = setInterval(_broadcastHeartbeats, HEARTBEAT_INTERVAL)
 
       _connected = true
-      debug('Started.')
-      Object.defineProperty(minister, 'id', {
-        configurable: true,
-        value: _bindingRouter.identity
-      })
+      debug('Started')
       process.nextTick(() => {
         minister.emit('start')
         _presentToMinisters()
@@ -663,7 +664,7 @@ const Minister = (settings) => {
     } else {
       debug('Connection failed.')
       process.nextTick(() => {
-        minister.emit('start failed')
+        minister.emit('start:failed')
       })
     }
     return minister
@@ -671,6 +672,7 @@ const Minister = (settings) => {
   function stop () {
     if (!_connected || _togglingConnection) return minister
     _togglingConnection = true
+    _heartbeatMessage = []
 
     debug('Stopping...')
 
@@ -706,10 +708,10 @@ const Minister = (settings) => {
       _clients.length = 0
       _workers.length = 0
       _ministers.length = 0
+      _requests.length = 0
       _togglingConnection = false
       _connected = false
       debug('Stopped.')
-      delete minister.id
       minister.emit('stop')
     }, farthestPeerLatency * 2)
     return minister
@@ -717,7 +719,22 @@ const Minister = (settings) => {
 
   Object.defineProperties(minister, {
     start: {value: start},
-    stop: {value: stop}
+    stop: {value: stop},
+    id: {
+      get () {
+        if (_bindingRouter) return _bindingRouter.identity
+        return null
+      }
+    },
+    endpoint: {
+      get () {
+        if (_bindingRouter) return _bindingRouter.endpoint
+        return null
+      }
+    },
+    clients: {get: () => _clients.map(c => c.toJS())},
+    workers: {get: () => _workers.map(w => w.toJS())},
+    peers: {get: () => _ministers.map(m => m.toJS())}
   })
   return minister
 }
