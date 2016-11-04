@@ -50,7 +50,7 @@ import {
 
 let dMsg = prefixString('Connection interface: ')
 
-export function ClientConnection ({type, endpoint, DNSDiscovery, security, debug, getInitialMessage, getHearbeatMessage, getDisconnectMessage}) {
+export function ConnectionInterface ({type, endpoint, DNSDiscovery, security, debug, getInitialMessage, getHearbeatMessage, getDisconnectMessage}) {
   let connection = new EventEmitter()
 
   let _active = false

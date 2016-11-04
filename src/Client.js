@@ -41,7 +41,7 @@ import {
   RESPONSE_LOST_WORKER
 } from './CONSTANTS'
 
-import { ClientConnection } from './helpers/ClientConnection'
+import { ConnectionInterface } from './helpers/ConnectionInterface'
 
 const Client = (settings) => {
   let debug = D('ministers:client')
@@ -52,7 +52,7 @@ const Client = (settings) => {
 
   // Private API
   let _active = false
-  let _connection = ClientConnection({
+  let _connection = ConnectionInterface({
     type: 'Client',
     endpoint: _settings.endpoint,
     DNSDiscovery: _settings.haveHostAndPortEndpoint,

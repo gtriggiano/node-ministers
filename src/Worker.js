@@ -29,7 +29,7 @@ import {
   findRequestByUUID
 } from './helpers/requests'
 
-import { ClientConnection } from './helpers/ClientConnection'
+import { ConnectionInterface } from './helpers/ConnectionInterface'
 
 const Worker = (settings) => {
   let debug = D('ministers:worker')
@@ -41,7 +41,7 @@ const Worker = (settings) => {
   // Private API
   let _active = false
   let _concurrency = _settings.concurrency
-  let _connection = ClientConnection({
+  let _connection = ConnectionInterface({
     type: 'Worker',
     endpoint: _settings.endpoint,
     DNSDiscovery: _settings.haveHostAndPortEndpoint,
