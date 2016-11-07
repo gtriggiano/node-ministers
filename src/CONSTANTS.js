@@ -26,5 +26,5 @@ export const MN_NEW_MINISTER_CONNECTED = '1'
 export const HEARTBEAT_LIVENESS = 3
 export const HEARTBEAT_INTERVAL = 1000
 
-export const RESPONSE_TIMEOUT = 'RTO'
-export const RESPONSE_LOST_WORKER = 'RLW'
+export const REQUEST_TIMEOUT = 'RTO'
+export const REQUEST_LOST_WORKER = 'RLW'

@@ -13,8 +13,8 @@ import {
 
 // Constants
 import {
-  RESPONSE_TIMEOUT,
-  RESPONSE_LOST_WORKER
+  REQUEST_TIMEOUT,
+  REQUEST_LOST_WORKER
 } from '../CONSTANTS'
 
 // Messages
@@ -68,7 +68,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     lostWorker: {value: () => {
       if (_hasLostWorker) return
       _hasLostWorker = true
-      request.sendErrorResponse(JSON.stringify(RESPONSE_LOST_WORKER))
+      request.sendErrorResponse(JSON.stringify(REQUEST_LOST_WORKER))
     }},
     sendPartialResponse: {value: (body) => {
       if (_isFinished) return
@@ -114,7 +114,7 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
   let _timeoutHandle
   let _setupTimeout = () => _timeoutHandle = setTimeout(() => {
     _isTimedout = true
-    request.giveErrorResponse(RESPONSE_TIMEOUT)
+    request.giveErrorResponse(REQUEST_TIMEOUT)
   }, timeout)
   if (timeout) _setupTimeout()
 
@@ -195,7 +195,7 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
     }},
     lostWorker: {value: () => {
       debug(`Request ${request.shortId} lost connection with worker`)
-      request.giveErrorResponse(RESPONSE_LOST_WORKER)
+      request.giveErrorResponse(REQUEST_LOST_WORKER)
     }}
   })
 }

@@ -38,7 +38,7 @@ import {
 
 // Constants
 import {
-  RESPONSE_LOST_WORKER
+  REQUEST_LOST_WORKER
 } from './CONSTANTS'
 
 import { ConnectionInterface } from './helpers/ConnectionInterface'
@@ -82,7 +82,7 @@ const Client = (settings) => {
     let request = _requestByUUID(uuid)
     if (request) {
       if (
-        error === RESPONSE_LOST_WORKER &&
+        error === REQUEST_LOST_WORKER &&
         request.isIdempotent &&
         (request.isClean || request.canReconnectStream)
       ) {
