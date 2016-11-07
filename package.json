@@ -9,7 +9,6 @@
     "rm": "docker-compose rm -f",
     "clean": "npm run stop && npm run rm",
     "test": "mocha --compilers js:babel-register tests",
-    "test:watch": "mocha --compilers js:babel-register -w tests",
     "prepublish": "docker-compose up distribution",
     "i:transpile": "rm -rf lib/* && babel --no-comments src -d lib",
     "i:playground": "DEBUG=ministers:* babel-node playground.js"
