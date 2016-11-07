@@ -1,10 +1,15 @@
-import should from 'should/as-function'
-import zmq from 'zmq'
-import { range, random, every } from 'lodash'
+'use strict'
 
-import M from '../src'
+let should = require('should/as-function')
+let zmq = require('zmq')
+let lodash = require('lodash')
+let range = lodash.range
+let random = lodash.random
+let every = lodash.every
 
-describe('CONNECTIONS', function () {
+let M = require('../lib')
+
+describe('CONNECTIONS:', function () {
   it('ministers connect to each other', (done) => {
     let minister1 = M.Minister()
     let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
