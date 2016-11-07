@@ -93,7 +93,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     }}
   })
 }
-export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished, debug}) => {
+export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished, onDeactivation, debug}) => {
   let request = {}
   let readableInterface = new stream.Readable({read: noop})
   // Let's prevent the `Uncaught Error` behaviour which could happen in case
@@ -118,11 +118,24 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
   }, timeout)
   if (timeout) _setupTimeout()
 
-  Object.defineProperty(readableInterface, 'promise', {
-    value: () => {
+  Object.defineProperties(readableInterface, {
+    promise: {value: () => {
       _deferred = _deferred || defer()
       return _deferred.promise
-    }
+    }},
+    deactivate: {value: () => {
+      if (_isFinished) return readableInterface
+      clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
+      _isFinished = true
+      onFinished()
+      onDeactivation()
+      debug(`Request ${request.shortId} has been deactivated`)
+      readableInterface.push(null)
+      options.finalCallback()
+      if (_deferred) _deferred.resolve()
+      return readableInterface
+    }}
   })
 
   return Object.defineProperties(request, {

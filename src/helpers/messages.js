@@ -9,6 +9,7 @@ export let isClientHello = msg => msg[1] === CONSTANTS.C_HELLO
 export let isClientHeartbeat = msg => msg[1] === CONSTANTS.C_HEARTBEAT
 export let isClientDisconnect = msg => msg[1] === CONSTANTS.C_DISCONNECT
 export let isClientRequest = msg => msg[1] === CONSTANTS.C_REQUEST
+export let isClientDeactivateRequest = msg => msg[1] === CONSTANTS.C_DEACTIVATE_REQUEST
 
 export let isWorkerReady = msg => msg[1] === CONSTANTS.W_READY
 export let isWorkerHeartbeat = msg => msg[1] === CONSTANTS.W_HEARTBEAT
@@ -44,6 +45,11 @@ export let clientRequestMessage = (reqUUID, service, options, body) => [
   service,
   options,
   body
+]
+export let clientDeactivateRequestMessage = (reqUUID) => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_DEACTIVATE_REQUEST,
+  reqUUID
 ]
 
 export let workerReadyMessage = (infos) => [

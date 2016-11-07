@@ -7,6 +7,7 @@ export const C_HELLO = '1'
 export const C_HEARTBEAT = '2'
 export const C_DISCONNECT = '3'
 export const C_REQUEST = '4'
+export const C_DEACTIVATE_REQUEST = '5'
 
 export const W_READY = '1'
 export const W_HEARTBEAT = '2'

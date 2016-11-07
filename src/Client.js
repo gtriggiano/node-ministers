@@ -24,7 +24,8 @@ import {
 import {
   clientHelloMessage,
   clientHeartbeatMessage,
-  clientDisconnectMessage
+  clientDisconnectMessage,
+  clientDeactivateRequestMessage
 } from './helpers/messages'
 
 // Requests
@@ -155,6 +156,9 @@ const Client = (settings) => {
       options,
       bodyBuffer: JSON.stringify({...reqBody}),
       onFinished: () => pull(_requests, request),
+      onDeactivation: () => {
+        if (request.isDispatched) _connection.send(clientDeactivateRequestMessage(request.uuid))
+      },
       debug
     })
 
