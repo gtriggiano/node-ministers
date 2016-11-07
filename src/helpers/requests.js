@@ -63,6 +63,7 @@ export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, op
     lostStakeholder: {value: () => {
       if (_hasLostStakeholder) return
       _hasLostStakeholder = true
+      onFinished()
       if (request.assignee) request.assignee.send(ministerRequestLostStakeholder(uuid))
     }},
     lostWorker: {value: () => {

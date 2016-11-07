@@ -41,6 +41,7 @@ import {
   isClientHeartbeat,
   isClientDisconnect,
   isClientRequest,
+  isClientDeactivateRequest,
 
   isWorkerReady,
   isWorkerHeartbeat,
@@ -180,6 +181,15 @@ const Minister = (settings) => {
       debug(`Received request ${request.shortId} from ${stakeholder.type} ${stakeholder.name}`)
       _assignRequests()
     }
+  }
+  let _onClientDeactivateRequest = (msg) => {
+    let client = _clientById(msg[0])
+    let uuid = msg[3].toString()
+    let request = _requestByUUID(uuid)
+    if (
+      request &&
+      request.stakeholder === client
+    ) request.lostStakeholder()
   }
   // Worker messages
   let _onWorkerReady = (msg) => {
@@ -448,8 +458,10 @@ const Minister = (settings) => {
       .filter(compose(isClientHeartbeat, tail)).subscribe(_onClientHeartbeat)
     subscriptions.clientDisconnect = clientMessages
       .filter(compose(isClientDisconnect, tail)).subscribe(_onClientDisconnect)
-    subscriptions.clientRequests = clientMessages
+    subscriptions.clientRequest = clientMessages
       .filter(compose(isClientRequest, tail)).subscribe(_onClientRequest)
+    subscriptions.clientDeactivateRequest = clientMessages
+      .filter(compose(isClientDeactivateRequest, tail)).subscribe(_onClientDeactivateRequest)
 
     subscriptions.workerReady = workerMessages
       .filter(compose(isWorkerReady, tail)).subscribe(_onWorkerReady)
@@ -515,7 +527,6 @@ const Minister = (settings) => {
     debug(`Discarded ${pendingReceivedRequests.length} received requests.`)
 
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
-    pull(_requests, ...pendingReceivedRequests)
     pull(_clients, client)
     minister.emit('client:disconnection', client.toJS())
   }
@@ -539,7 +550,6 @@ const Minister = (settings) => {
 
     pendingReceivedRequests.forEach(request => request.lostStakeholder())
     pendingAssignedRequests.forEach(request => request.lostWorker())
-    pull(_requests, ...pendingReceivedRequests, ...pendingAssignedRequests)
     pull(_ministers, m)
     minister.emit('minister:disconnection', m.toJS())
   }
