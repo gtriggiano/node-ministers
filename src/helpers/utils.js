@@ -6,6 +6,8 @@ import zmq from 'zmq'
 import Promise from 'bluebird'
 import { curry, isInteger, isString } from 'lodash'
 
+let validHostnameRegex = /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/
+
 // Exported
 export let getOSNetworkExternalInterface = () => {
   let ifaces = os.networkInterfaces()
@@ -29,11 +31,13 @@ export let isValidEndpoint = (endpoint) => {
           port > 0
 }
 
+export let isValidHostname = (str) => validHostnameRegex.test(str)
+
 export let isValidHostAndPort = (str) => {
   if (!str || !isString(str)) return false
   let [host, port] = str.split(':')
   port = parseInt(port, 10)
-  return host && isInteger(port) && port > 0
+  return isValidHostname(host) && isInteger(port) && port > 0
 }
 
 export let isValidCurveKey = (key) => isString(key) && key.length === 40

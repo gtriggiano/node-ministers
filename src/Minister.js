@@ -22,6 +22,7 @@ import compose from 'lodash/fp/compose'
 // Utils
 import {
   getOSNetworkExternalInterface,
+  isValidHostname,
   isValidEndpoint,
   isValidCurveKey,
   isValidCurveKeyPair,
@@ -176,6 +177,7 @@ const Minister = (settings) => {
         onFinished: () => pull(_requests, request)
       })
       _requests.push(request)
+      debug(`Received request ${request.shortId} from ${stakeholder.type} ${stakeholder.name}`)
       _assignRequests()
     }
   }
@@ -761,6 +763,10 @@ function validateSettings (settings) {
   if (
     !ministers ||
     (!isString(ministers) && !isArray(ministers))
+  ) throw new Error(ministersErrorMessage)
+  if (
+    isString(ministers) &&
+    !isValidHostname(ministers)
   ) throw new Error(ministersErrorMessage)
   if (
     isArray(ministers) &&

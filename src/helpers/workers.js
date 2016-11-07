@@ -23,6 +23,7 @@ export let getWorkerInstance = ({router, id, service, concurrency, latency}) => 
       id,
       service,
       latency,
+      name: worker.name,
       concurrency: worker.concurrency,
       pendingRequests: worker.pendingRequests
     })},

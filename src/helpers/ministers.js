@@ -43,7 +43,13 @@ export let getMinisterInstance = ({router, id, latency, endpoint}) => {
     name: {value: id.substring(0, 11), enumerable: true},
     latency: {value: latency, enumerable: true},
     endpoint: {value: endpoint, enumerable: true},
-    toJS: {value: () => ({id, latency, endpoint, workers: minister.workers})},
+    toJS: {value: () => ({
+      id,
+      latency,
+      endpoint,
+      name: minister.name,
+      workers: minister.workers
+    })},
     send: {value: (frames) => router.send([id, ...frames])},
     hasSlotsForService: {value: (service) =>
       minister.workers

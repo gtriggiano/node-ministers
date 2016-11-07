@@ -62,21 +62,22 @@ const Worker = (settings) => {
   let _requestByUUID = findRequestByUUID(_requests)
 
   _connection.on('client:request', ({uuid, options, body}) => {
-    let instance = getWorkerRequestInstance({
+    let requestInstance = getWorkerRequestInstance({
       connection: _connection,
       uuid,
       options,
       body,
       onFinished: () => {
-        pull(_requests, instance)
+        pull(_requests, requestInstance)
         _connection.send(workerHeartbeatMessage(JSON.stringify({
           concurrency: _concurrency,
           pendingRequests: _requests.length
         })))
       }
     })
-    _requests.push(instance)
-    worker.emit('request', instance.request, instance.response)
+    _requests.push(requestInstance)
+    debug(`Received request ${requestInstance.shortId} from minister ${_connection.minister.name}`)
+    worker.emit('request', requestInstance.request, requestInstance.response)
   })
   _connection.on('request:lost:stakeholder', ({uuid}) => {
     let request = _requestByUUID(uuid)

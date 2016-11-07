@@ -49,6 +49,7 @@ import {
 } from '../CONSTANTS'
 
 let dMsg = prefixString('Connection interface: ')
+let connectionRetryInterval = 1000
 
 export function ConnectionInterface ({type, endpoint, DNSDiscovery, security, debug, getInitialMessage, getHearbeatMessage, getDisconnectMessage}) {
   let connection = new EventEmitter()
@@ -205,8 +206,8 @@ export function ConnectionInterface ({type, endpoint, DNSDiscovery, security, de
           _dealer.send(getInitialMessage(conn))
           _attemptedConnections.push(conn)
           debug(dMsg(`connection attempt N° ${attemptNo} started`))
-          setTimeout(() => {
-            if (!_connected && _active) {
+          conn.timeoutCheck = setTimeout(() => {
+            if (_active) {
               debug(dMsg(`connection attempt N° ${attemptNo} is taking too long. Trying next...`))
               _attemptConnection()
             }
@@ -220,33 +221,33 @@ export function ConnectionInterface ({type, endpoint, DNSDiscovery, security, de
     _connected = true
     _connection = last(_attemptedConnections)
     _connection.id = ministerId
+    _connection.name = ministerId.substring(0, 11)
+    clearTimeout(_connection.timeoutCheck)
     _attemptedConnections = []
-    debug(dMsg(`connected to minister ${_connection.id} at ${_connection.endpoint}`))
+    debug(dMsg(`connected to minister ${_connection.name} at ${_connection.endpoint}`))
     _startHeartbeats()
-    connection.emit('connection', {
-      id: _connection.id,
-      endpoint: _connection.endpoint
-    })
+    let connectedMinister = pick(_connection, ['id', 'name', 'endpoint'])
+    connection.emit('connection', connectedMinister)
   }
   let _onConnectionFail = () => {
     _attemptedConnections = []
     _unsubscribeFromDealer()
     _tearDownDealer()
-    debug(dMsg(`could not connect to any minister`))
+    debug(dMsg(`could not connect to any minister. Will retry in ${connectionRetryInterval} msec`))
     if (!DNSDiscovery) {
       _phoneBook.push(endpoint)
       _phoneBook = uniq(_phoneBook)
     }
     connection.emit('connection:fail')
-    if (_active) setTimeout(_attemptConnection, 1000)
+    if (_active) setTimeout(_attemptConnection, connectionRetryInterval)
   }
   let _onConnectionEnd = () => {
     if (!_connected) return
     _unsubscribeFromDealer()
     _unmonitorConnection()
     _stopHeartbeats()
-    debug(dMsg(`disconnected from minister ${_connection.id} at ${_connection.endpoint}`))
-    let disconnectedMinister = pick(_connection, ['id', 'endpoint'])
+    debug(dMsg(`disconnected from minister ${_connection.name} at ${_connection.endpoint}`))
+    let disconnectedMinister = pick(_connection, ['id', 'name', 'endpoint'])
     _connected = false
     _connection = null
     connection.emit('disconnection', disconnectedMinister)
@@ -319,6 +320,7 @@ export function ConnectionInterface ({type, endpoint, DNSDiscovery, security, de
     deactivate: {value: deactivate},
     send: {value: send},
     isConnected: {get () { return _connected }},
-    isActive: {get () { return _active }}
+    isActive: {get () { return _active }},
+    minister: {get () { return _connection && pick(_connection, ['id', 'name', 'endpoint']) }}
   })
 }

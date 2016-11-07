@@ -15,7 +15,7 @@ export let getClientInstance = ({router, id}) => {
     id: {value: id, enumerable: true},
     name: {value: id.substring(0, 11), enumerable: true},
     send: {value: (frames) => router.send([id, ...frames])},
-    toJS: {value: () => ({id})}
+    toJS: {value: () => ({id, name: client.name})}
   })
 }
 
