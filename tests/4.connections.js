@@ -186,17 +186,14 @@ describe('CONNECTIONS:', function () {
     let cc = 0
     let onPeerConnection = () => cc++
 
-    minister.on('start', () => {
-      worker.start()
-      client.start()
-    })
+    minister.on('start', () => { worker.start(); client.start() })
     client.on('connection', onPeerConnection)
-    worker.on('connection', onPeerConnection)
-    minister.on('stop', () => done())
-    minister.start()
-    setTimeout(function () {
+    client.on('connection', () => setTimeout(function () {
       should(cc).equal(1)
       minister.stop()
-    }, 50)
+    }, 50))
+    worker.on('connection', onPeerConnection)
+    minister.on('stop', () => { client.stop(); worker.stop(); done() })
+    minister.start()
   })
 })
