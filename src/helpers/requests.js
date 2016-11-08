@@ -136,7 +136,15 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
       options.finalCallback()
       if (_deferred) _deferred.resolve()
       return readableInterface
-    }}
+    }},
+    isClean: {get: () => _isClean},
+    isAccomplished: {get: () => _isAccomplished},
+    isTimedout: {get: () => _isTimedout},
+    isFailed: {get: () => _isFailed},
+    isFinished: {get: () => _isFinished},
+    receivedBytes: {get: () => _receivedBytes},
+    isIdempotent: {value: idempotent},
+    canReconnectStream: {value: reconnectStream}
   })
 
   return Object.defineProperties(request, {
@@ -186,7 +194,7 @@ export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished
       onFinished()
       debug(`Request ${request.shortId} had error response: ${error}`)
       let errMsg = isString(error)
-        ? error
+        ? error || `request failed`
         : error.message || `request failed`
       let e = isString(error)
         ? new Error(errMsg)
@@ -239,7 +247,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
           body = encoding === 'buffer'
             ? chunk
             : _isError
-              ? new Buffer(JSON.stringify(chunk))
+              ? new Buffer(chunk)
               : isString(chunk)
                 ? new Buffer(chunk)
                 : new Buffer(JSON.stringify(chunk))
@@ -271,8 +279,14 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     return responseEnd.apply(response, [chunk, encoding, cb])
   }
   response.send = (chunk) => response.end(chunk)
-  response.error = (chunk) => {
+  response.error = (err) => {
     _isError = true
+    let chunk
+    try {
+      chunk = JSON.stringify(err || '')
+    } catch (e) {
+      chunk = '""'
+    }
     response.end(chunk)
   }
 

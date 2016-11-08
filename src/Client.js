@@ -148,6 +148,7 @@ const Client = (settings) => {
       ? options.timeout : 0
     options.idempotent = !!options.idempotent
     options.reconnectStream = !!options.reconnectStream
+    if (!options.idempotent) options.reconnectStream = false
     if (!isFunction(options.partialCallback)) options.partialCallback = noop
     if (!isFunction(options.finalCallback)) options.finalCallback = noop
 
