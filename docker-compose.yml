@@ -1,0 +1,22 @@
+version: '2'
+services:
+
+  tests-argon:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile-argon
+    command: ['npm', 'test']
+    volumes:
+      - ./lib:/package/lib
+      - ./tests:/package/tests
+      - ./package.json:/package/package.json
+
+  tests-boron:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile-boron
+    command: ['npm', 'test']
+    volumes:
+      - ./lib:/package/lib
+      - ./tests:/package/tests
+      - ./package.json:/package/package.json

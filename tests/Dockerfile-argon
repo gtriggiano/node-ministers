@@ -1,0 +1,7 @@
+FROM node:argon-slim
+
+WORKDIR /package
+
+# Install dependencies
+ADD package.json /package/package.json
+RUN npm install
