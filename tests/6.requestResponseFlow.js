@@ -6,7 +6,7 @@ let uuid = require('uuid')
 
 let M = require('../lib')
 
-describe('REQUEST -> RESPONSE FLOW:', () => {
+describe('REQUEST >> RESPONSE FLOW:', () => {
   it('a minister act as an async broker between a client and a worker', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
@@ -245,7 +245,9 @@ describe('REQUEST -> RESPONSE FLOW:', () => {
     minister.on('stop', () => { client.stop(); worker.stop(); done() })
     minister.start()
   })
+})
 
+describe('REQUEST >> RESPONSE FLOW WITH INTERRUPTIONS:', () => {
   describe('If a minister gets disconnected', () => {
     it('the worker\'s request handler can know that request is not active anymore', (done) => {
       let minister = M.Minister()
@@ -833,15 +835,206 @@ describe('REQUEST -> RESPONSE FLOW:', () => {
   })
 })
 
-describe('REQUEST -> ERROR FLOW: when response.error(err) is called', () => {
-  it('the client request emits `error`')
-  it('the client request\'s promise is rejected with an error')
-  it('the client request\'s finalCallback is called with an error')
-  describe('If err is a string', () => {
-    it('the client error.message === err')
+describe('REQUEST >> RESPONSE FLOW WITH ERROR (when response.error(err) is called):', () => {
+  it('the client request emits `error`', (done) => {
+    let minister = M.Minister()
+    let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+    let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+    worker.on('request', (req, res) => res.error())
+    client.on('connection', () => {
+      client.request('Test')
+        .on('error', (e) => {
+          should(e).be.an.instanceof(Error)
+          minister.stop()
+        })
+    })
+    minister.on('start', () => { client.start(); worker.start() })
+    minister.on('stop', () => { client.stop(); worker.stop(); done() })
+    minister.start()
   })
-  describe('If err is an object', () => {
-    it('the client error.message === (err.message || `request failed`)')
-    it('the err properties survived to JSON.stringify() are copied to the client error')
+  it('the client request\'s promise is rejected with an error', (done) => {
+    let minister = M.Minister()
+    let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+    let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+    worker.on('request', (req, res) => res.error())
+    client.on('connection', () => {
+      client.request('Test')
+        .promise()
+        .then(() => done(new Error('promise should not be resolved')))
+        .catch((e) => {
+          should(e).be.an.instanceof(Error)
+          minister.stop()
+        })
+    })
+    minister.on('start', () => { client.start(); worker.start() })
+    minister.on('stop', () => { client.stop(); worker.stop(); done() })
+    minister.start()
+  })
+  it('the client request\'s finalCallback is called with an error', (done) => {
+    let minister = M.Minister()
+    let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+    let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+    worker.on('request', (req, res) => res.error())
+    client.on('connection', () => {
+      client.request('Test', {}, {
+        finalCallback: (e, response) => {
+          should(e).be.an.instanceof(Error)
+          should(response).be.undefined()
+          minister.stop()
+        }
+      })
+    })
+    minister.on('start', () => { client.start(); worker.start() })
+    minister.on('stop', () => { client.stop(); worker.stop(); done() })
+    minister.start()
+  })
+
+  describe('If `err` is a nonempty string', () => {
+    it('the client error.message === err', (done) => {
+      let minister = M.Minister()
+      let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+      let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+      worker.on('request', (req, res) => res.error('error world!'))
+      client.on('connection', () => {
+        client.request('Test')
+          .promise()
+          .then(() => done(new Error('promise should not be resolved')))
+          .catch((e) => {
+            should(e).be.an.instanceof(Error)
+            should(e.message).equal('error world!')
+            minister.stop()
+          })
+      })
+      minister.on('start', () => { client.start(); worker.start() })
+      minister.on('stop', () => { client.stop(); worker.stop(); done() })
+      minister.start()
+    })
+  })
+  describe('If `err` is falsy', () => {
+    it('the client error.message === `request failed`', (done) => {
+      let minister = M.Minister()
+      let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+      let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+      worker.on('request', (req, res) => res.error(''))
+      client.on('connection', () => {
+        client.request('Test')
+          .promise()
+          .then(() => done(new Error('promise should not be resolved')))
+          .catch((e) => {
+            should(e).be.an.instanceof(Error)
+            should(e.message).equal('request failed')
+            minister.stop()
+          })
+      })
+      minister.on('start', () => { client.start(); worker.start() })
+      minister.on('stop', () => { client.stop(); worker.stop(); done() })
+      minister.start()
+    })
+  })
+  describe('If `err` is an object', () => {
+    it('the client error.message === (err.message || `request failed`)', (done) => {
+      let minister = M.Minister()
+      let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+      let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+      let c = 0
+      worker.on('request', (req, res) => {
+        c++
+        let e = c === 1 ? {message: 'error world!'} : {}
+        res.error(e)
+      })
+      client.on('connection', () => {
+        // First request
+        client.request('Test')
+          .promise()
+          .then(() => done(new Error('promise should not be resolved')))
+          .catch((e) => {
+            should(e).be.an.instanceof(Error)
+            should(e.message).equal('error world!')
+
+            client.request('Test')
+              .promise()
+              .then(() => done(new Error('promise should not be resolved')))
+              .catch((e) => {
+                should(e).be.an.instanceof(Error)
+                should(e.message).equal('request failed')
+                minister.stop()
+              })
+          })
+      })
+      minister.on('start', () => { client.start(); worker.start() })
+      minister.on('stop', () => { client.stop(); worker.stop(); done() })
+      minister.start()
+    })
+    it('the `err` properties survived to JSON.stringify() are copied to the client error object', (done) => {
+      let minister = M.Minister()
+      let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+      let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+      worker.on('request', (req, res) => res.error({
+        a: true,
+        b: 2,
+        c: function () {},
+        d: 'hello',
+        e: {
+          ea: true
+        }
+      }))
+      client.on('connection', () => {
+        client.request('Test')
+          .promise()
+          .then(() => done(new Error('promise should not be resolved')))
+          .catch((e) => {
+            should(e).be.an.instanceof(Error)
+            should(e.message).equal('request failed')
+            should(e).containEql({
+              a: true,
+              b: 2,
+              d: 'hello',
+              e: {
+                ea: true
+              }
+            })
+            minister.stop()
+          })
+      })
+      minister.on('start', () => { client.start(); worker.start() })
+      minister.on('stop', () => { client.stop(); worker.stop(); done() })
+      minister.start()
+    })
+
+    describe('which cannot be JSON.stringify(ed)', () => {
+      it('the client error.message === `request failed`', (done) => {
+        let minister = M.Minister()
+        let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+        let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+        // Circular !!
+        let a = {}
+        let b = {}
+        a.b = b
+        b.a = a
+
+        worker.on('request', (req, res) => res.error(a))
+        client.on('connection', () => {
+          client.request('Test')
+            .promise()
+            .then(() => done(new Error('promise should not be resolved')))
+            .catch((e) => {
+              should(e).be.an.instanceof(Error)
+              should(e.message).equal('request failed')
+              minister.stop()
+            })
+        })
+        minister.on('start', () => { client.start(); worker.start() })
+        minister.on('stop', () => { client.stop(); worker.stop(); done() })
+        minister.start()
+      })
+    })
   })
 })
