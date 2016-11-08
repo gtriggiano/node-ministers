@@ -1,6 +1,6 @@
 import net from 'net'
 import D from 'debug'
-import zmq from 'zmq'
+import zmq from 'zeromq'
 import z85 from 'z85'
 import Rx from 'rxjs'
 import uuid from 'uuid'

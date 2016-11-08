@@ -2,7 +2,7 @@ import net from 'net'
 import os from 'os'
 import nacl from 'tweetnacl'
 import z85 from 'z85'
-import zmq from 'zmq'
+import zmq from 'zeromq'
 import Promise from 'bluebird'
 import { curry, isInteger, isString } from 'lodash'
 

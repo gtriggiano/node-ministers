@@ -1,7 +1,7 @@
 'use strict'
 
 let should = require('should/as-function')
-let zmq = require('zmq')
+let zmq = require('zeromq')
 let lodash = require('lodash')
 let range = lodash.range
 let random = lodash.random
