@@ -4,12 +4,8 @@
   "description": "",
   "main": "lib/index.js",
   "scripts": {
-    "playground": "touch playground.js && npm run clean && docker-compose run development npm run i:playground",
-    "stop": "docker-compose stop",
-    "rm": "docker-compose rm -f",
-    "clean": "npm run stop && npm run rm",
     "test": "mocha -b tests",
-    "prepublish": "docker-compose up distribution",
+    "prepublish": "npm run transpile",
     "transpile": "rm -rf lib/* && babel --no-comments src -d lib"
   },
   "repository": {
