@@ -350,10 +350,10 @@ const Minister = (settings) => {
 
         if (statusCode === '200') {
           statusText = 'OK'
-          debug('Authorizing minister connection')
+          debug('ZAP: Authorizing connection')
         } else {
           statusText = 'Unauthorized public key'
-          debug('Not authorizing minister connection')
+          debug('ZAP: Not authorizing connection')
         }
 
         _zapRouter.send([
