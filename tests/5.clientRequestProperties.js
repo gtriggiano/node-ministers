@@ -4,19 +4,23 @@ let should = require('should/as-function')
 
 let M = require('../lib')
 
-describe.only('CLIENT REQUEST PROPERTIES', () => {
+describe('CLIENT REQUEST PROPERTIES (request = client.request(service[, body][, options])):', () => {
   it('request.isClean (boolean) is true if the request has not already received any data', (done) => {
     let minister = M.Minister()
     let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
     let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
 
-    worker.on('request', (req, res) => res.send('data'))
+    worker.on('request', (req, res) => {
+      setTimeout(() => res.write('data'), 5)
+      setTimeout(() => res.end(), 10)
+    })
     worker.on('connection', () => {
       let clientRequest = client.request('Test')
-      clientRequest.promise().then(() => {
-        should(clientRequest.isClean).be.False()
-        minister.stop()
-      })
+      clientRequest
+        .on('data', () => should(clientRequest.isClean).be.False())
+        .promise().then(() => {
+          minister.stop()
+        })
       should(clientRequest.isClean).be.True()
     })
     client.on('connection', () => worker.start())
