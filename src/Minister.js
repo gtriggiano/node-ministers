@@ -1,6 +1,6 @@
 import net from 'net'
 import D from 'debug'
-import zmq from 'zmq'
+import zmq from 'zeromq'
 import z85 from 'z85'
 import Rx from 'rxjs'
 import uuid from 'uuid'
@@ -350,10 +350,10 @@ const Minister = (settings) => {
 
         if (statusCode === '200') {
           statusText = 'OK'
-          debug('Authorizing minister connection')
+          debug('ZAP: Authorizing connection')
         } else {
           statusText = 'Unauthorized public key'
-          debug('Not authorizing minister connection')
+          debug('ZAP: Not authorizing connection')
         }
 
         _zapRouter.send([

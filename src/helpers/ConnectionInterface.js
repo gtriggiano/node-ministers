@@ -1,4 +1,4 @@
-import zmq from 'zmq'
+import zmq from 'zeromq'
 import Rx from 'rxjs'
 import uuid from 'uuid'
 import EventEmitter from 'eventemitter3'
