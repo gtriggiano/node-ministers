@@ -1,8 +1,6 @@
 'use strict'
 
-let fs = require('fs')
 let should = require('should/as-function')
-let uuid = require('uuid')
 
 let M = require('../lib')
 
