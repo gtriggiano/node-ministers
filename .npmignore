@@ -1,14 +1,9 @@
-# Docs folder
-docs/
-
-# Scripts folder
-scripts/
-
 # Source folder
 src/
 
-# Tests folder
-tests/
+# Dockerfiles
+tests/Dockerfile-argon
+tests/Dockerfile-boron
 
 .babelrc
 

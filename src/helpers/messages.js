@@ -1,49 +1,118 @@
-import MINISTERS from '../MINISTERS'
+import * as CONSTANTS from '../CONSTANTS'
 
-const isClientMessage = msg => msg[1] === MINISTERS.CLIENT
-const isWorkerMessage = msg => msg[1] === MINISTERS.WORKER
-const isMinisterMessage = msg => msg[1] === MINISTERS.MINISTER
-const isMinisterNotifierMessage = msg => msg[1] === MINISTERS.MINISTER_NOTIFIER
+export let isClientMessage = msg => msg[0] === CONSTANTS.CLIENT
+export let isWorkerMessage = msg => msg[0] === CONSTANTS.WORKER
+export let isMinisterMessage = msg => msg[0] === CONSTANTS.MINISTER
+export let isMinisterNotifierMessage = msg => msg[0] === CONSTANTS.MINISTER_NOTIFIER
 
-const isClientHello = msg => msg[2] === MINISTERS.C_HELLO
-const isClientHeartbeat = msg => msg[2] === MINISTERS.C_HEARTBEAT
-const isClientDisconnect = msg => msg[2] === MINISTERS.C_DISCONNECT
-const isClientRequest = msg => msg[2] === MINISTERS.C_REQUEST
+export let isClientHello = msg => msg[1] === CONSTANTS.C_HELLO
+export let isClientHeartbeat = msg => msg[1] === CONSTANTS.C_HEARTBEAT
+export let isClientDisconnect = msg => msg[1] === CONSTANTS.C_DISCONNECT
+export let isClientRequest = msg => msg[1] === CONSTANTS.C_REQUEST
+export let isClientDeactivateRequest = msg => msg[1] === CONSTANTS.C_DEACTIVATE_REQUEST
 
-const isWorkerReady = msg => msg[2] === MINISTERS.W_READY
-const isWorkerHeartbeat = msg => msg[2] === MINISTERS.W_HEARTBEAT
-const isWorkerDisconnect = msg => msg[2] === MINISTERS.W_DISCONNECT
-const isWorkerPartialResponse = msg => msg[2] === MINISTERS.W_PARTIAL_RESPONSE
-const isWorkerFinalResponse = msg => msg[2] === MINISTERS.W_FINAL_RESPONSE
-const isWorkerErrorResponse = msg => msg[2] === MINISTERS.W_ERROR_RESPONSE
+export let isWorkerReady = msg => msg[1] === CONSTANTS.W_READY
+export let isWorkerHeartbeat = msg => msg[1] === CONSTANTS.W_HEARTBEAT
+export let isWorkerDisconnect = msg => msg[1] === CONSTANTS.W_DISCONNECT
+export let isWorkerPartialResponse = msg => msg[1] === CONSTANTS.W_PARTIAL_RESPONSE
+export let isWorkerFinalResponse = msg => msg[1] === CONSTANTS.W_FINAL_RESPONSE
+export let isWorkerErrorResponse = msg => msg[1] === CONSTANTS.W_ERROR_RESPONSE
 
-const isMinisterHello = msg => msg[2] === MINISTERS.M_HELLO
-const isMinisterWorkersAvailability = msg => msg[2] === MINISTERS.M_WORKERS_AVAILABILITY
-const isMinisterDisconnect = msg => msg[2] === MINISTERS.M_DISCONNECT
+export let isMinisterHello = msg => msg[1] === CONSTANTS.M_HELLO
+export let isMinisterHeartbeat = msg => msg[1] === CONSTANTS.M_HEARTBEAT
+export let isMinisterWorkersAvailability = msg => msg[1] === CONSTANTS.M_WORKERS_AVAILABILITY
+export let isMinisterDisconnect = msg => msg[1] === CONSTANTS.M_DISCONNECT
+export let isMinisterRequestLostStakeholder = msg => msg[1] === CONSTANTS.M_REQUEST_LOST_STAKEHOLDER
 
-const isMinisterNotifierNewMinisterConnected = msg => msg[2] === MINISTERS.MN_NEW_MINISTER_CONNECTED
+export let isMinisterNotifierNewMinisterConnected = msg => msg[1] === CONSTANTS.MN_NEW_MINISTER_CONNECTED
 
-export {
-  isClientMessage,
-  isWorkerMessage,
-  isMinisterMessage,
-  isMinisterNotifierMessage,
+export let clientHelloMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_HELLO
+]
+export let clientHeartbeatMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_HEARTBEAT
+]
+export let clientDisconnectMessage = () => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_DISCONNECT
+]
+export let clientRequestMessage = (reqUUID, service, options, body) => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_REQUEST,
+  reqUUID,
+  service,
+  options,
+  body
+]
+export let clientDeactivateRequestMessage = (reqUUID) => [
+  CONSTANTS.CLIENT,
+  CONSTANTS.C_DEACTIVATE_REQUEST,
+  reqUUID
+]
 
-  isClientHello,
-  isClientHeartbeat,
-  isClientDisconnect,
-  isClientRequest,
+export let workerReadyMessage = (infos) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_READY,
+  infos
+]
+export let workerHeartbeatMessage = (infos) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_HEARTBEAT,
+  infos
+]
+export let workerDisconnectMessage = () => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_DISCONNECT
+]
+export let workerPartialResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_PARTIAL_RESPONSE,
+  reqUUID,
+  body
+]
+export let workerFinalResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_FINAL_RESPONSE,
+  reqUUID,
+  body
+]
+export let workerErrorResponseMessage = (reqUUID, body) => [
+  CONSTANTS.WORKER,
+  CONSTANTS.W_ERROR_RESPONSE,
+  reqUUID,
+  body
+]
 
-  isWorkerReady,
-  isWorkerHeartbeat,
-  isWorkerDisconnect,
-  isWorkerPartialResponse,
-  isWorkerFinalResponse,
-  isWorkerErrorResponse,
+export let ministerHelloMessage = (infos) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_HELLO,
+  infos
+]
+export let ministerHeartbeatMessage = (ministerUUID) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_HEARTBEAT,
+  ministerUUID
+]
+export let ministerWorkersAvailabilityMessage = (workers) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_WORKERS_AVAILABILITY,
+  workers
+]
+export let ministerDisconnectMessage = (altentativeMinistersEndpoints) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_DISCONNECT,
+  altentativeMinistersEndpoints
+]
+export let ministerRequestLostStakeholder = (reqUUID) => [
+  CONSTANTS.MINISTER,
+  CONSTANTS.M_REQUEST_LOST_STAKEHOLDER,
+  reqUUID
+]
 
-  isMinisterHello,
-  isMinisterWorkersAvailability,
-  isMinisterDisconnect,
-
-  isMinisterNotifierNewMinisterConnected
-}
+export let notifierNewMinisterConnectedMessage = (infos) => [
+  CONSTANTS.MINISTER_NOTIFIER,
+  CONSTANTS.MN_NEW_MINISTER_CONNECTED,
+  infos
+]

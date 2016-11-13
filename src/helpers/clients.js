@@ -3,27 +3,20 @@ import compose from 'lodash/fp/compose'
 import isEqualFp from 'lodash/fp/isEqual'
 import getFp from 'lodash/fp/get'
 
-import MINISTERS from '../MINISTERS'
-
 // Internals
 const clientHasId = (clientId) => compose(isEqualFp(clientId), getFp('id'))
 
 // External
-const getClientInstance = (router, clientId) => {
-  let client = {
-    type: 'Client',
-    id: clientId,
-    liveness: MINISTERS.HEARTBEAT_LIVENESS
-  }
+export let getClientInstance = ({router, id}) => {
+  let client = {}
 
-  Object.defineProperty(client, 'send', {value: (...frames) => router.send([clientId, ...frames])})
-
-  return client
+  return Object.defineProperties(client, {
+    type: {value: 'client'},
+    id: {value: id, enumerable: true},
+    name: {value: id.substring(0, 11), enumerable: true},
+    send: {value: (frames) => router.send([id, ...frames])},
+    toJS: {value: () => ({id, name: client.name})}
+  })
 }
 
-const findClientById = curry((clients, clientId) => clients.find(clientHasId(clientId)))
-
-export {
-  getClientInstance,
-  findClientById
-}
+export let findClientById = curry((clients, clientId) => clients.find(clientHasId(clientId)))

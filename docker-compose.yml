@@ -1,23 +1,22 @@
 version: '2'
 services:
 
-  development:
+  tests-argon:
     build:
       context: .
-      dockerfile: tests/Dockerfile.dev
+      dockerfile: tests/Dockerfile-argon
+    command: ['npm', 'test']
     volumes:
-      - ./src:/package/src
-      - ./.babelrc:/package/.babelrc
+      - ./lib:/package/lib
+      - ./tests:/package/tests
       - ./package.json:/package/package.json
-      - ./playground.js:/package/playground.js
 
-  distribution:
+  tests-boron:
     build:
       context: .
-      dockerfile: tests/Dockerfile.dev
-    command: ["npm", "run", "i:transpile"]
+      dockerfile: tests/Dockerfile-boron
+    command: ['npm', 'test']
     volumes:
-      - "./src:/package/src"
-      - "./lib:/package/lib"
-      - "./package.json:/package/package.json"
-      - "./.babelrc:/package/.babelrc"
+      - ./lib:/package/lib
+      - ./tests:/package/tests
+      - ./package.json:/package/package.json

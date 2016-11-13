@@ -1,80 +1,315 @@
-import { curry, isInteger } from 'lodash'
+import stream from 'readable-stream'
+import uuid from 'uuid'
+import { curry, noop, isString } from 'lodash'
 import compose from 'lodash/fp/compose'
 import eqFp from 'lodash/fp/eq'
 import isEqualFp from 'lodash/fp/isEqual'
 import negateFp from 'lodash/fp/negate'
 import getFp from 'lodash/fp/get'
 
-import MINISTERS from '../MINISTERS'
+import {
+  defer
+} from './utils'
+
+// Constants
+import {
+  REQUEST_TIMEOUT,
+  REQUEST_LOST_WORKER
+} from '../CONSTANTS'
+
+// Messages
+import {
+  clientRequestMessage,
+
+  workerPartialResponseMessage,
+  workerFinalResponseMessage,
+  workerErrorResponseMessage,
+
+  ministerRequestLostStakeholder
+} from './messages'
 
 // Internals
-const requestIsNotAssigned = compose(negateFp, getFp('assignee'))
-// const requestIsAssigned = compose(negateFp, requestIsNotAssigned)
-const getStakeholderType = compose(getFp('type'), getFp('stakeholder'))
-const getAssigneeType = compose(getFp('type'), getFp('assignee'))
-const stakeholderIsClient = compose(isEqualFp('Client'), getStakeholderType)
-const stakeholderIsMinister = compose(isEqualFp('Minister'), getStakeholderType)
-const assigneeIsWorker = compose(isEqualFp('Worker'), getAssigneeType)
-const assigneeIsMinister = compose(isEqualFp('Minister'), getAssigneeType)
+const requestIsNotAssigned = negateFp(getFp('assignee'))
+const requestIsAssigned = negateFp(requestIsNotAssigned)
+const requestIsNotDispatched = negateFp(getFp('isDispatched'))
+const requestIsDispatched = negateFp(requestIsNotDispatched)
+const requestIsIdempotent = getFp('isIdempotent')
 const requestHasUUID = (uuid) => compose(isEqualFp(uuid), getFp('uuid'))
 
 // Exported
-const getMinisterRequestInstance = ({stakeholder, uuid, service, options, frames}) => {
-  let _repliedWithError = false
-  let _completed = false
-  let _timedout = false
-  let _timeout
+export let getMinisterRequestInstance = ({stakeholder, uuid, service, frames, options, onFinished, debug}) => {
+  let request = {}
+  let {idempotent, reconnectStream} = options
 
-  let request = {stakeholder, uuid, service, options, frames}
-
-  if (isInteger(options.timeout) && options.timeout > 0) {
-    _timeout = setTimeout(() => {
-      request.sendErrorResponse(MINISTERS.RESPONSE_TIMEOUT)
-      _timedout = true
-    }, options.timeout)
-  }
+  let _isClean = true
+  let _isAccomplished = false
+  let _isFailed = false
+  let _isFinished = false
+  let _hasLostStakeholder = false
+  let _hasLostWorker = false
 
   return Object.defineProperties(request, {
-    completed: {value: () => _completed},
-    failed: {value: () => _repliedWithError},
-    timedout: {value: () => _timedout},
+    uuid: {value: uuid},
+    shortId: {value: uuid.substring(0, 8)},
+    service: {value: service},
+    stakeholder: {get: () => _hasLostStakeholder ? null : stakeholder},
+    frames: {value: frames},
+    isAccomplished: {value: () => _isAccomplished},
+    isFailed: {value: () => _isFailed},
+    isFinished: {value: () => _isFinished},
+    isClean: {get: () => _isClean},
+    isIdempotent: {value: idempotent},
+    canReconnectStream: {value: reconnectStream},
+    lostStakeholder: {value: () => {
+      if (_hasLostStakeholder) return
+      _hasLostStakeholder = true
+      onFinished()
+      if (request.assignee) request.assignee.send(ministerRequestLostStakeholder(uuid))
+    }},
+    lostWorker: {value: () => {
+      if (_hasLostWorker) return
+      _hasLostWorker = true
+      request.sendErrorResponse(JSON.stringify(REQUEST_LOST_WORKER))
+    }},
     sendPartialResponse: {value: (body) => {
-      if (_completed || _timedout) return
-      clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_PARTIAL_RESPONSE, uuid, body])
+      if (_isFinished) return
+      _isClean = false
+      if (!_hasLostStakeholder) stakeholder.send(workerPartialResponseMessage(uuid, body))
     }},
     sendFinalResponse: {value: (body) => {
-      if (_completed || _timedout) return
-      _completed = true
-      clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_FINAL_RESPONSE, uuid, body])
+      if (_isFinished) return
+      _isClean = false
+      _isAccomplished = true
+      _isFinished = true
+      onFinished()
+      if (!_hasLostStakeholder) stakeholder.send(workerFinalResponseMessage(uuid, body))
     }},
-    sendErrorResponse: {value: (body) => {
-      if (_completed || _timedout) return
-      _repliedWithError = true
-      _completed = true
-      clearTimeout(_timeout)
-      stakeholder.send(['MW', MINISTERS.W_ERROR_RESPONSE, uuid, body])
+    sendErrorResponse: {value: (errorMessage) => {
+      if (_isFinished) return
+      _isClean = false
+      _isFailed = true
+      _isFinished = true
+      onFinished()
+      if (!_hasLostStakeholder) stakeholder.send(workerErrorResponseMessage(uuid, errorMessage))
     }}
   })
 }
-const findRequestsByClientStakeholder = curry((requests, client) =>
-  requests.filter(stakeholderIsClient).filter(compose(eqFp(client.id), getFp('id'), getFp('stakeholder'))))
-const findRequestsByMinisterStakeholder = curry((requests, minister) =>
-  requests.filter(stakeholderIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('stakeholder'))))
-const findRequestsByWorkerAssignee = curry((requests, worker) =>
-  requests.filter(assigneeIsWorker).filter(compose(eqFp(worker.id), getFp('id'), getFp('assignee'))))
-const findRequestsByMinisterAssignee = curry((requests, minister) =>
-  requests.filter(assigneeIsMinister).filter(compose(eqFp(minister.address), getFp('address'), getFp('assignee'))))
-const findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
-const findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
+export let getClientRequestInstance = ({service, options, bodyBuffer, onFinished, onDeactivation, debug}) => {
+  let request = {}
+  let readableInterface = new stream.Readable({read: noop})
+  // Let's prevent the `Uncaught Error` behaviour which could happen in case
+  // the user does not register an handler for the `error` event
+  readableInterface.on('error', noop)
+  let {timeout, idempotent, reconnectStream} = options
 
-export {
-  getMinisterRequestInstance,
-  findUnassignedRequests,
-  findRequestsByClientStakeholder,
-  findRequestsByMinisterStakeholder,
-  findRequestsByWorkerAssignee,
-  findRequestsByMinisterAssignee,
-  findRequestByUUID
+  let _isClean = true
+  let _isAccomplished = false
+  let _isTimedout = false
+  let _isFailed = false
+  let _isFinished = false
+  let _receivedBytes = 0
+  let _uuid = uuid.v4()
+  let _options = JSON.stringify(options)
+  let _deferred
+
+  let _timeoutHandle
+  let _setupTimeout = () => _timeoutHandle = setTimeout(() => {
+    _isTimedout = true
+    request.giveErrorResponse(REQUEST_TIMEOUT)
+  }, timeout)
+  if (timeout) _setupTimeout()
+
+  Object.defineProperties(readableInterface, {
+    promise: {value: () => {
+      _deferred = _deferred || defer()
+      return _deferred.promise
+    }},
+    deactivate: {value: () => {
+      if (_isFinished) return readableInterface
+      clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
+      _isFinished = true
+      onFinished()
+      onDeactivation()
+      debug(`Request ${request.shortId} has been deactivated`)
+      readableInterface.push(null)
+      options.finalCallback()
+      if (_deferred) _deferred.resolve()
+      return readableInterface
+    }},
+    isClean: {get: () => _isClean},
+    isAccomplished: {get: () => _isAccomplished},
+    isTimedout: {get: () => _isTimedout},
+    isFailed: {get: () => _isFailed},
+    isFinished: {get: () => _isFinished},
+    receivedBytes: {get: () => _receivedBytes},
+    isIdempotent: {value: idempotent},
+    canReconnectStream: {value: reconnectStream}
+  })
+
+  return Object.defineProperties(request, {
+    uuid: {get: () => _uuid},
+    shortId: {get: () => _uuid.substring(0, 8)},
+    isClean: {get: () => _isClean},
+    isAccomplished: {get: () => _isAccomplished},
+    isTimedout: {get: () => _isTimedout},
+    isFailed: {get: () => _isFailed},
+    isFinished: {get: () => _isFinished},
+    receivedBytes: {get: () => _receivedBytes},
+    isIdempotent: {value: idempotent},
+    canReconnectStream: {value: reconnectStream},
+    readableInterface: {value: readableInterface},
+    frames: {get: () => clientRequestMessage(_uuid, service, _options, bodyBuffer)},
+    givePartialResponse: {value: (buffer) => {
+      if (_isFinished) return
+      clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
+      _isClean = false
+      _receivedBytes += buffer.length
+      readableInterface.push(buffer)
+      options.partialCallback(buffer)
+    }},
+    giveFinalResponse: {value: (buffer) => {
+      if (_isFinished) return
+      clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
+      _isClean = false
+      _isAccomplished = true
+      _isFinished = true
+      _receivedBytes += buffer.length
+      onFinished()
+      debug(`Request ${request.shortId} had final response`)
+      readableInterface.push(buffer)
+      readableInterface.push(null)
+      options.finalCallback(null, buffer)
+      if (_deferred) _deferred.resolve(buffer)
+    }},
+    giveErrorResponse: {value: (error) => {
+      if (_isFinished) return
+      clearTimeout(_timeoutHandle)
+      _timeoutHandle = null
+      _isClean = false
+      _isFailed = true
+      _isFinished = true
+      onFinished()
+      debug(`Request ${request.shortId} had error response: ${error}`)
+      let errMsg = isString(error)
+        ? error || `request failed`
+        : error.message || `request failed`
+      let e = isString(error)
+        ? new Error(errMsg)
+        : Object.assign(
+          new Error(errMsg),
+          error
+        )
+      readableInterface.emit('error', e)
+      readableInterface.push(null)
+      options.finalCallback(e)
+      if (_deferred) _deferred.reject(e)
+    }},
+    reschedule: {value: () => {
+      if (_isFinished) return
+      delete request.isDispatched
+      let oldId = request.shortId
+      _uuid = uuid.v4()
+      debug(`Rescheduling request ${oldId} -> ${request.shortId}`)
+      if (timeout && !_timeoutHandle) _setupTimeout()
+    }},
+    lostWorker: {value: () => {
+      debug(`Request ${request.shortId} lost connection with worker`)
+      request.giveErrorResponse(REQUEST_LOST_WORKER)
+    }}
+  })
 }
+export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinished, debug}) => {
+  let _ended = false
+  let _ending = false
+  let _endingWithNull = false
+  let _isError = false
+  let _isActive = true
+
+  let request = Object.defineProperties({}, {
+    body: {value: {...body}, enumerable: true},
+    options: {value: {...options}, enumerable: true},
+    isActive: {get () { return _isActive }}
+  })
+
+  let response = new stream.Writable({
+    objectMode: true,
+    write (chunk, encoding, cb) {
+      cb()
+
+      if (_ended) return
+
+      if (_isActive) {
+        let body
+        try {
+          body = encoding === 'buffer'
+            ? chunk
+            : _isError
+              ? new Buffer(chunk)
+              : isString(chunk)
+                ? new Buffer(chunk)
+                : new Buffer(JSON.stringify(chunk))
+        } catch (e) {}
+        body = _endingWithNull ? new Buffer(0) : (body || new Buffer(0))
+
+        let msg = _isError
+          ? workerErrorResponseMessage(uuid, body)
+          : _ending
+            ? workerFinalResponseMessage(uuid, body)
+            : workerPartialResponseMessage(uuid, body)
+
+        connection.send(msg)
+      }
+
+      if (_ending) {
+        _ended = true
+        onFinished()
+      }
+    }
+  })
+  let responseEnd = response.end
+  response.end = (chunk, encoding, cb) => {
+    _ending = true
+    if (chunk === undefined || chunk === null) {
+      chunk = ''
+      _endingWithNull = true
+    }
+    return responseEnd.apply(response, [chunk, encoding, cb])
+  }
+  response.send = (chunk) => response.end(chunk)
+  response.error = (err) => {
+    _isError = true
+    let chunk
+    try {
+      chunk = JSON.stringify(err || '')
+    } catch (e) {
+      chunk = '""'
+    }
+    response.end(chunk)
+  }
+
+  return Object.defineProperties({}, {
+    uuid: {value: uuid},
+    shortId: {value: uuid.substring(0, 8)},
+    request: {value: request},
+    response: {value: response},
+    lostStakeholder: {value: () => {
+      _isActive = false
+      response.on('error', noop)
+      process.nextTick(() => response.end())
+    }}
+  })
+}
+
+export let findRequestsByStakeholder = curry((requests, stakeholder) =>
+  requests.filter(compose(eqFp(stakeholder.id), getFp('id'), getFp('stakeholder'))))
+export let findRequestsByAssignee = curry((requests, assignee) =>
+  requests.filter(compose(eqFp(assignee.id), getFp('id'), getFp('assignee'))))
+export let findRequestByUUID = curry((requests, uuid) => requests.find(requestHasUUID(uuid)))
+export let findUnassignedRequests = (requests) => () => requests.filter(requestIsNotAssigned)
+export let findAssignedRequests = (requests) => () => requests.filter(requestIsAssigned)
+export let findNotDispatchedRequests = (requests) => () => requests.filter(requestIsNotDispatched)
+export let findDispatchedRequests = (requests) => () => requests.filter(requestIsDispatched)
+export let findIdempotentRequests = (requests) => () => requests.filter(requestIsIdempotent)

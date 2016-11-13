@@ -8,78 +8,91 @@ import getFp from 'lodash/fp/get'
 import filterFp from 'lodash/fp/filter'
 import negateFp from 'lodash/fp/negate'
 
-import MINISTERS from '../MINISTERS'
+import {
+  parseEndpoint
+} from './utils'
 
 import {
-  workerDoesService,
-  workerCanWork
+  workerDoesService
 } from './workers'
 
 // Internals
 const concatPortToIPs = curry((port, ips) => ips.map(ip => `${ip}:${port}`))
-
 const prependTransportToAddresses = curry((transport, addresses) => addresses.map(address => `${transport}://${address}`))
-
 const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
-  dns.lookup(host, {family: 4, all: false}, (err, addresses) => {
+  dns.lookup(host, {family: 4, all: true}, (err, addresses) => {
     if (err) return reject(err)
     resolve(addresses.map(({address}) => address))
   })
 })
-
 const ministerHasId = (ministerId) => compose(isEqualFp(ministerId), getFp('id'))
-
-const takeAddressesDifferentFromAddress = (address) => filterFp(compose(negateFp, isEqualFp(address)))
-
-const ministerCanDoService = curry((service, minister) =>
-  minister.workers.length &&
-  minister.workers.filter(workerDoesService(service)).filter(workerCanWork)
+const filterEndpointsDifferentFrom = (endpoint) => filterFp(negateFp(isEqualFp(endpoint)))
+const ministerDoesService = curry((service, minister) =>
+  !!~minister.workers.map(({service}) => service).indexOf(service)
 )
 
 // Exported
-const getMinisterInstance = (router, id, latency) => {
+export let getMinisterInstance = ({router, id, latency, endpoint}) => {
   let minister = {
-    type: 'Minister',
-    id,
-    latency,
-    liveness: MINISTERS.HEARTBEAT_LIVENESS,
     workers: []
   }
 
-  Object.defineProperty(minister, 'send', {value: (frames) => router.send([id, ...frames])})
-  return minister
+  return Object.defineProperties(minister, {
+    type: {value: 'minister'},
+    id: {value: id, enumerable: true},
+    name: {value: id.substring(0, 11), enumerable: true},
+    latency: {value: latency, enumerable: true},
+    endpoint: {value: endpoint, enumerable: true},
+    toJS: {value: () => ({
+      id,
+      latency,
+      endpoint,
+      name: minister.name,
+      workers: minister.workers
+    })},
+    send: {value: (frames) => router.send([id, ...frames])},
+    hasSlotsForService: {value: (service) =>
+      minister.workers
+        .filter(workerDoesService(service))
+        .filter(({concurrency, pendingRequests}) =>
+          concurrency < 0 || concurrency > pendingRequests)
+        .length > 0
+    }
+  })
 }
 
-const findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
+export let findMinisterById = curry((ministers, ministerId) => ministers.find(ministerHasId(ministerId)))
+export let findMinisterForService = curry((ministers, service) =>
+  ministers.filter(ministerDoesService(service)).sort((m1, m2) => {
+    let slots1 = m1.slotsForService(service)
+    let slots2 = m2.slotsForService(service)
 
-const findAvailableMinisterForService = curry((ministers, service) =>
-  ministers.filter(ministerCanDoService(service)).sort((m1, m2) =>
-    m1.latency < m2.latency
+    return slots1 && !slots2
       ? -1
-      : m1.latency > m2.latency
+      : !slots1 && slots2
         ? 1
-        : 0
-  )[0]
+        : m1.latency < m2.latency
+          ? -1
+          : m1.latency > m2.latency
+            ? 1
+            : 0
+  })[0]
 )
-
-const discoverOtherMinistersEndpoints = ({host, port, ownAddress}) =>
+export let discoverMinistersEndpoints = ({host, port, excludedEndpoint}) =>
   discoverMinistersIPsByHost(host)
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
-  .then(takeAddressesDifferentFromAddress(ownAddress))
-
-const getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
-  let [ address, port ] = ministerEndpoint.split('//')[1].split(':')
-  tcpPing.ping({address, port, attempts: 5}, (err, {avg} = {}) => {
+  .then(filterEndpointsDifferentFrom(excludedEndpoint))
+  .catch(() => [])
+export let getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
+  let { ip, port } = parseEndpoint(ministerEndpoint)
+  tcpPing.probe(ip, port, (err, available) => {
     if (err) return reject(err)
-    resolve(Math.round(avg))
+    if (!available) return reject()
+
+    tcpPing.ping({address: ip, port, attempts: 5}, (err, {avg} = {}) => {
+      if (err) return reject(err)
+      resolve(Math.round(avg))
+    })
   })
 })
-
-export {
-  getMinisterInstance,
-  findMinisterById,
-  findAvailableMinisterForService,
-  discoverOtherMinistersEndpoints,
-  getMinisterLatency
-}
