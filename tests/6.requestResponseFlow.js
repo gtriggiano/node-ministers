@@ -2,6 +2,7 @@
 
 let fs = require('fs')
 let should = require('should/as-function')
+let sinon = require('sinon')
 let uuid = require('uuid')
 
 let M = require('../lib')
@@ -1014,6 +1015,8 @@ describe('REQUEST >> RESPONSE FLOW WITH ERROR (when response.error(err) is calle
         let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
         let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
 
+        sinon.stub(console, 'error')
+
         // Circular !!
         let a = {}
         let b = {}
@@ -1028,6 +1031,37 @@ describe('REQUEST >> RESPONSE FLOW WITH ERROR (when response.error(err) is calle
             .catch((e) => {
               should(e).be.an.instanceof(Error)
               should(e.message).equal('request failed')
+              console.error.restore()
+              minister.stop()
+            })
+        })
+        minister.on('start', () => { client.start(); worker.start() })
+        minister.on('stop', () => { client.stop(); worker.stop(); done() })
+        minister.start()
+      })
+      it('the JSON.stringify(err) error is printed to console', (done) => {
+        let minister = M.Minister()
+        let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
+        let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
+
+        sinon.stub(console, 'error')
+
+        // Circular !!
+        let a = {}
+        let b = {}
+        a.b = b
+        b.a = a
+
+        worker.on('request', (req, res) => res.error(a))
+        client.on('connection', () => {
+          client.request('Test')
+            .promise()
+            .then(() => done(new Error('promise should not be resolved')))
+            .catch((e) => {
+              should(e).be.an.instanceof(Error)
+              should(e.message).equal('request failed')
+              should(console.error.calledWithMatch((e) => e instanceof TypeError)).be.True()
+              console.error.restore()
               minister.stop()
             })
         })

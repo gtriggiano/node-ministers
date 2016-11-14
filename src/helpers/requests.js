@@ -251,9 +251,8 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
               : isString(chunk)
                 ? new Buffer(chunk)
                 : new Buffer(JSON.stringify(chunk))
-        } catch (e) {
-          console.error(e)
-        }
+        } catch (e) {}
+
         body = _endingWithNull ? new Buffer(0) : (body || new Buffer(0))
 
         let msg = _isError
@@ -287,6 +286,7 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     try {
       chunk = JSON.stringify(err || '')
     } catch (e) {
+      console.error(e)
       chunk = '""'
     }
     response.end(chunk)
