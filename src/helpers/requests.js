@@ -1,6 +1,6 @@
 import stream from 'readable-stream'
 import uuid from 'uuid'
-import { curry, noop, isString } from 'lodash'
+import { curry, noop, isString, isError } from 'lodash'
 import compose from 'lodash/fp/compose'
 import eqFp from 'lodash/fp/eq'
 import isEqualFp from 'lodash/fp/isEqual'
@@ -284,6 +284,12 @@ export let getWorkerRequestInstance = ({connection, uuid, body, options, onFinis
     _isError = true
     let chunk
     try {
+      if (isError(err)) {
+        err = {
+          ...err,
+          message: err.message
+        }
+      }
       chunk = JSON.stringify(err || '')
     } catch (e) {
       console.error(e)
