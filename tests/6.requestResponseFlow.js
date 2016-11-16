@@ -946,7 +946,7 @@ describe('REQUEST >> RESPONSE FLOW WITH ERROR (when response.error(err) is calle
       let c = 0
       worker.on('request', (req, res) => {
         c++
-        let e = c === 1 ? {message: 'error world!'} : {}
+        let e = c === 1 ? new Error('error world!') : {}
         res.error(e)
       })
       client.on('connection', () => {
