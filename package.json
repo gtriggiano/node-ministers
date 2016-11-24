@@ -5,6 +5,7 @@
   "main": "lib/index.js",
   "scripts": {
     "test": "mocha -b tests",
+    "dev:tests": "mocha -b -w tests",
     "test:in:docker": "npm run transpile && docker-compose up tests-argon && docker-compose up tests-boron",
     "prepublish": "npm run transpile",
     "transpile": "rm -rf lib/* && babel --no-comments src -d lib"
