@@ -12,7 +12,7 @@ let M = require('../lib')
 describe('CONNECTIONS:', function () {
   it('ministers connect to each other', (done) => {
     let minister1 = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     let c = 0
     let check = () => {
       c++
@@ -49,7 +49,7 @@ describe('CONNECTIONS:', function () {
       let port = 5555 + 2 * n
       let ministersAddresses = range(n)
         .map(n => `tcp://127.0.0.1:${5555 + 2 * n}`)
-      let minister = M.Minister({port, ministers: ministersAddresses})
+      let minister = M.Minister({port, advertiseEndpoint: 'tcp://127.0.0.1:' + port, ministers: ministersAddresses})
       if (!isLast) minister.on('start', () => ministers[n + 1].start())
       if (!isLast) minister.on('stop', () => ministers[n + 1].stop())
       if (isLast) {
@@ -68,7 +68,7 @@ describe('CONNECTIONS:', function () {
   })
   it('when a minister stops, its clients reconnect to another minister', (done) => {
     let minister1 = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
 
     minister1.on('start', () => minister2.start())
@@ -91,7 +91,7 @@ describe('CONNECTIONS:', function () {
   })
   it('when a minister stops, its workers reconnect to another minister', (done) => {
     let minister1 = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5555'})
 
     minister1.on('start', () => minister2.start())

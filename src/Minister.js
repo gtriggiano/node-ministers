@@ -21,7 +21,7 @@ import compose from 'lodash/fp/compose'
 
 // Utils
 import {
-  getOSNetworkExternalInterface,
+  // getOSNetworkExternalInterface,
   isValidHostname,
   isValidEndpoint,
   isValidCurveKey,
@@ -55,14 +55,14 @@ import {
   isMinisterDisconnect,
   isMinisterRequestLostStakeholder,
 
-  isMinisterNotifierNewMinisterConnected,
+  isMinisterNotifierNewMinisterConnecting,
 
   ministerHelloMessage,
   ministerHeartbeatMessage,
   ministerWorkersAvailabilityMessage,
   ministerDisconnectMessage,
 
-  notifierNewMinisterConnectedMessage
+  notifierNewMinisterConnectingMessage
 } from './helpers/messages'
 
 // Clients
@@ -124,6 +124,7 @@ const Minister = (settings) => {
   let _workerForService = findWorkerForService(_workers)
 
   let _ministers = []
+  let _potentialPeersByConnectionToken = {}
   let _ministerById = findMinisterById(_ministers)
   let _ministerForService = findMinisterForService(_ministers)
 
@@ -271,30 +272,43 @@ const Minister = (settings) => {
   // Minister messages
   let _onMinisterHello = (msg) => {
     let ministerId = msg[0]
-    let {binding, latency, endpoint} = JSON.parse(msg[3])
+    let {fromBoundRouter, token, latency, endpoint} = JSON.parse(msg[3])
 
     let m = _ministerById(ministerId)
-    if (!m) {
+    if (m) return
+
+    if (fromBoundRouter) {
+      if (!token || !_potentialPeersByConnectionToken[token]) return
+      let {endpoint, latency} = _potentialPeersByConnectionToken[token]
+      delete _potentialPeersByConnectionToken[token]
       m = getMinisterInstance({
-        router: binding ? _connectingRouter : _bindingRouter,
+        router: _connectingRouter,
         id: ministerId,
         latency,
         endpoint
       })
-      _ministers.push(m)
+      debug(`Received HELLO from minister bound at ${endpoint}. Sending back HELLO message`)
       m.send(ministerHelloMessage(JSON.stringify({
-        binding: !binding,
+        fromBoundRouter: false,
         latency,
-        endpoint: _bindingRouter.endpoint
+        endpoint: _bindingRouter.publicEndpoint
       })))
-      _broadcastWorkersAvailability()
-      if (binding) debug(`Communicating with minister bound at ${endpoint}`)
-      if (!binding) debug(`Communicating with connected minister`)
-      debug(`Minister name: ${m.name}`)
-      debug(`Minister latency: ${m.latency} milliseconds\n`)
-      _monitor(m)
-      minister.emit('minister:connection', m.toJS())
+    } else {
+      m = getMinisterInstance({
+        router: _bindingRouter,
+        id: ministerId,
+        latency,
+        endpoint
+      })
+      debug(`Received HELLO from connected minister`)
     }
+
+    debug(`Minister name: ${m.name}`)
+    debug(`Minister latency: ${m.latency} milliseconds\n`)
+    _ministers.push(m)
+    _broadcastWorkersAvailability()
+    _monitor(m)
+    minister.emit('minister:connection', m.toJS())
   }
   let _onMinisterWorkersAvailability = (msg) => {
     let minister = _ministerById(msg[0])
@@ -314,13 +328,21 @@ const Minister = (settings) => {
     if (request) request.lostStakeholder()
   }
   // MinisterNotifier messages
-  let _onNewMinisterConnected = (msg) => {
-    let { identity, latency } = JSON.parse(msg[3])
+  let _onNewMinisterConnecting = (msg) => {
+    let { identity, token } = JSON.parse(msg[3])
+
+    // Found myself resolving DNS
+    if (identity === _bindingRouter.identity) {
+      _bindingRouter.publicEndpoint = _potentialPeersByConnectionToken[token].endpoint
+      debug(`Discovered my own endpoint: ${_bindingRouter.publicEndpoint}`)
+      delete _potentialPeersByConnectionToken[token]
+      return
+    }
+
     debug(`Received notification of a new connected minister (${identity.substring(0, 11)}). Sending HELLO message\n`)
     let infos = JSON.stringify({
-      binding: true,
-      latency,
-      endpoint: _bindingRouter.endpoint
+      fromBoundRouter: true,
+      token
     })
     _bindingRouter.send([identity, ...ministerHelloMessage(infos)])
   }
@@ -372,26 +394,14 @@ const Minister = (settings) => {
     }
 
     let bindIp = _settings.ip || '0.0.0.0'
-    let osExternalIp = getOSNetworkExternalInterface()
-    let bindEndpoint = `tcp://${bindIp}:${_settings.port}`
-    let routerEndpoint = _settings.ip
-      ? bindEndpoint
-      : osExternalIp && `tcp://${osExternalIp}:${_settings.port}`
-
-    if (routerEndpoint) {
-      _bindingRouter.endpoint = routerEndpoint
-      _bindingRouter.bindSync(bindEndpoint)
-      debug(`Binding Router bound to ${routerEndpoint}`)
-      return true
+    let bindingEndpoint = `tcp://${bindIp}:${_settings.port}`
+    _bindingRouter.bindSync(bindingEndpoint)
+    debug(`Binding Router bound to ${bindingEndpoint}`)
+    if (isArray(_settings.ministers)) {
+      _bindingRouter.publicEndpoint = _settings.advertiseEndpoint
+      debug(`Binding Router public endpoint: ${_bindingRouter.publicEndpoint}`)
     } else {
-      _bindingRouter.close()
-      _bindingRouter = null
-      if (_zapRouter) {
-        _zapRouter.close()
-        _zapRouter = null
-      }
-      debug(`Could not determine the OS external IP address, aborting...`)
-      return false
+      debug(`Binding Router public endpoint will be discovered through DNS resolution`)
     }
   }
   let _tearDownBindingRouter = () => {
@@ -485,7 +495,7 @@ const Minister = (settings) => {
       .filter(compose(isMinisterRequestLostStakeholder, tail)).subscribe(_onMinisterRequestLostStakeholder)
 
     subscriptions.ministerNotifierNewMinisterConnected = ministerNotifierMessages
-      .filter(compose(isMinisterNotifierNewMinisterConnected, tail)).subscribe(_onNewMinisterConnected)
+      .filter(compose(isMinisterNotifierNewMinisterConnecting, tail)).subscribe(_onNewMinisterConnecting)
 
     if (!isBindingRouter) {
       let monitorSubject = new Rx.Subject()
@@ -558,8 +568,7 @@ const Minister = (settings) => {
     if (isString(_settings.ministers)) {
       getMinistersEndpoints = discoverMinistersEndpoints({
         host: _settings.ministers,
-        port: settings.port,
-        excludedEndpoint: _bindingRouter.endpoint
+        port: _settings.port
       })
     } else {
       getMinistersEndpoints = Promise.resolve(_settings.ministers)
@@ -571,9 +580,14 @@ const Minister = (settings) => {
           debug(`Potential minister at ${endpoint}`)
           getMinisterLatency(endpoint)
             .then(latency => {
-              debug(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Connecting...`)
+              debug(`Minister at ${endpoint} is reachable with a latency of ${latency}ms. Trying to connect...`)
+              // Set the recognition token
+              let token = uuid.v4()
+              _potentialPeersByConnectionToken[token] = {endpoint, latency}
+
               // Establish a connection to the peer minister
               _connectingRouter.connect(endpoint)
+
               //  Establish a notifier connection
               let notifier = zmq.socket('dealer')
               if (_settings.security) {
@@ -589,14 +603,18 @@ const Minister = (settings) => {
               let connectionsSubscription = _connectingRouterConnections.delay(latency * 5).subscribe(ep => {
                 if (ep === endpoint) {
                   connectionsSubscription.unsubscribe()
+
+                  if (!_connectingRouter) return notifier.close()
+
                   debug(`Connected to minister at ${ep}`)
                   debug(`Presenting myself (${_connectingRouter.identity}) through notifier\n`)
                   // Notify the minister about myself
                   let infos = JSON.stringify({
                     identity: _connectingRouter.identity,
-                    latency
+                    connectingTo: endpoint,
+                    token
                   })
-                  notifier.send(notifierNewMinisterConnectedMessage(infos))
+                  notifier.send(notifierNewMinisterConnectingMessage(infos))
                   notifier.close()
                 }
               })
@@ -653,32 +671,29 @@ const Minister = (settings) => {
   // Public API
   function start () {
     if (_connected || _togglingConnection) return minister
-    debug('Start')
-    if (_setupBindingRouter()) {
-      _heartbeatMessage = ministerHeartbeatMessage(_bindingRouter.identity)
-      _setupConnectingRouter()
-      _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
-      _unsubscribeFromConnectingRouter = _observeRouter(_connectingRouter, false)
 
-      // Periodically try to assign unassigned requests
-      _requestAssigningInterval = setInterval(
-        () => _assignRequests(),
-        200
-      )
-      // Periodically send heartbeats
-      _heartbeatsInterval = setInterval(_broadcastHeartbeats, HEARTBEAT_INTERVAL)
+    debug('Starting')
 
-      _connected = true
-      process.nextTick(() => {
-        minister.emit('start')
-        _presentToMinisters()
-      })
-    } else {
-      debug('Start failed')
-      process.nextTick(() => {
-        minister.emit('start:failed')
-      })
-    }
+    _setupBindingRouter()
+    _setupConnectingRouter()
+    _unsubscribeFromBindingRouter = _observeRouter(_bindingRouter, true)
+    _unsubscribeFromConnectingRouter = _observeRouter(_connectingRouter, false)
+
+    // Periodically send heartbeats
+    _heartbeatMessage = ministerHeartbeatMessage(_bindingRouter.identity)
+    _heartbeatsInterval = setInterval(_broadcastHeartbeats, HEARTBEAT_INTERVAL)
+
+    // Periodically try to assign unassigned requests
+    _requestAssigningInterval = setInterval(
+      () => _assignRequests(),
+      200
+    )
+
+    _connected = true
+    process.nextTick(() => {
+      minister.emit('start')
+      _presentToMinisters()
+    })
     return minister
   }
   function stop () {
@@ -738,7 +753,7 @@ const Minister = (settings) => {
     },
     endpoint: {
       get () {
-        if (_bindingRouter) return _bindingRouter.endpoint
+        if (_bindingRouter) return _bindingRouter.publicEndpoint || null
         return null
       }
     },
@@ -752,37 +767,29 @@ const Minister = (settings) => {
 const defaultSettings = {
   ip: null,
   port: 5555,
-  ministers: []
+  advertiseEndpoint: null,
+  ministers: 'localhost'
 }
 
 const eMsg = prefixString('Minister(settings): ')
 function validateSettings (settings) {
-  let {ip, port, ministers, security} = settings
+  let {ip, port, ministers, advertiseEndpoint, security} = settings
 
   // Ip
-  if (
-    ip &&
-    !net.isIPv4(ip)
-  ) throw new Error(eMsg('settings.ip MUST be either `undefined` or a valid IPv4 address'))
+  if (ip && !net.isIPv4(ip)) throw new Error(eMsg('settings.ip MUST be either `undefined` or a valid IPv4 address'))
 
   // Port
   if (!isInteger(port) || port < 1) throw new Error(eMsg('settings.port MUST be a positive integer'))
 
   // Ministers
   let ministersErrorMessage = eMsg('settings.ministers MUST be either a string, representing a hostname, or an array of 0 or more valid TCP endpoints, in the form of \'tcp://IP:port\'')
-  if (
-    !ministers ||
-    (!isString(ministers) && !isArray(ministers))
-  ) throw new Error(ministersErrorMessage)
-  if (
-    isString(ministers) &&
-    !isValidHostname(ministers)
-  ) throw new Error(ministersErrorMessage)
-  if (
-    isArray(ministers) &&
-    !every(ministers, isValidEndpoint)
-  ) throw new Error(ministersErrorMessage)
-  if (isString(ministers) && ip) throw new Error(eMsg(`if your ministers'addresses are resolvable via DNS at ${ministers} you MUST NOT set settings.ip`))
+  if (!ministers || (!isString(ministers) && !isArray(ministers))) throw new Error(ministersErrorMessage)
+  if (isString(ministers) && !isValidHostname(ministers)) throw new Error(ministersErrorMessage)
+  if (isArray(ministers) && !every(ministers, isValidEndpoint)) throw new Error(ministersErrorMessage)
+
+  // Adverstise endpoint
+  if (isArray(ministers) && !isValidEndpoint(advertiseEndpoint)) throw new Error(eMsg(`if you specify your ministers'addresses as a list of endpoints you MUST also set 'advertiseEndpoint'`))
+  // if (isString(ministers) && ip) throw new Error(eMsg(`if your ministers'addresses are resolvable via DNS at ${ministers} you MUST NOT set settings.ip`))
 
   // Security
   if (security) {
