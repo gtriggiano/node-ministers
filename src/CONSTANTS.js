@@ -22,7 +22,7 @@ export const M_WORKERS_AVAILABILITY = '3'
 export const M_DISCONNECT = '4'
 export const M_REQUEST_LOST_STAKEHOLDER = '5'
 
-export const MN_NEW_MINISTER_CONNECTED = '1'
+export const MN_NEW_MINISTER_CONNECTING = '1'
 
 export const HEARTBEAT_LIVENESS = 3
 export const HEARTBEAT_INTERVAL = 1000

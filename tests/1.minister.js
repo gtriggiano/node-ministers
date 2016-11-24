@@ -70,7 +70,7 @@ describe('MINISTER:', () => {
   })
   it('emits `minister:connection`, passing connected minister infos: {id, name, latency, endpoint}', (done) => {
     let minister = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     minister.on('minister:connection', m => {
       should(m.id).be.a.String()
       should(m.name).be.a.String()
@@ -85,7 +85,7 @@ describe('MINISTER:', () => {
   })
   it('emits `minister:disconnection`, passing disconnected minister infos: {id, name, latency, endpoint}', (done) => {
     let minister = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     minister.on('minister:connection', m => {
       minister2.stop()
     })
@@ -116,7 +116,7 @@ describe('MINISTER:', () => {
 
       should(() => M.Minister({port: 8000})).not.throw()
     })
-    it('if settings.ministers is definded and is neither a string representing a hostname or an array of tcp endpoints', () => {
+    it('if settings.ministers is defined and is neither a string representing a hostname or an array of tcp endpoints', () => {
       should(() => M.Minister({ministers: true})).throw()
       should(() => M.Minister({ministers: -2})).throw()
       should(() => M.Minister({ministers: '@bad'})).throw()
@@ -126,10 +126,15 @@ describe('MINISTER:', () => {
       should(() => M.Minister({ministers: ['8000', 'tcp://151.101.16.133:8000']})).throw()
 
       should(() => M.Minister({ministers: 'github.com'})).not.throw()
-      should(() => M.Minister({ministers: ['tcp://151.101.16.133:8000']})).not.throw()
+      should(() => M.Minister({advertiseEndpoint: 'tcp://127.0.0.1:5555', ministers: ['tcp://151.101.16.133:8000']})).not.throw()
     })
-    it('if settings.ministers is a hostname while settings.ip has been defined', () => {
-      should(() => M.Minister({ip: '127.0.0.1', ministers: 'github.com'})).throw()
+    it('if settings.ministers is an array and settings.advertiseEndpoint is not defined as a valid endpoint', () => {
+      should(() => M.Minister({ministers: []})).throw()
+      should(() => M.Minister({advertiseEndpoint: false, ministers: []})).throw()
+      should(() => M.Minister({advertiseEndpoint: null, ministers: []})).throw()
+      should(() => M.Minister({advertiseEndpoint: 'bad', ministers: []})).throw()
+
+      should(() => M.Minister({advertiseEndpoint: 'tcp://127.0.0.1:5555', ministers: []})).not.throw()
     })
     it('if settings.security is truthy and is not a plain object', () => {
       let keys = zmq.curveKeypair()

@@ -60,6 +60,11 @@ const Worker = (settings) => {
   })
   let _requests = []
   let _requestByUUID = findRequestByUUID(_requests)
+  let _broadcastStatus = () => {
+    let status = {concurrency: _concurrency, pendingRequests: _requests.length}
+    _connection.send(workerHeartbeatMessage(JSON.stringify(status)))
+    worker.emit('status', status)
+  }
 
   _connection.on('client:request', ({uuid, options, body}) => {
     let requestInstance = getWorkerRequestInstance({
@@ -69,14 +74,12 @@ const Worker = (settings) => {
       body,
       onFinished: () => {
         pull(_requests, requestInstance)
-        _connection.send(workerHeartbeatMessage(JSON.stringify({
-          concurrency: _concurrency,
-          pendingRequests: _requests.length
-        })))
+        _broadcastStatus()
       }
     })
     _requests.push(requestInstance)
     debug(`Received request ${requestInstance.shortId} from minister ${_connection.minister.name}`)
+    _broadcastStatus()
     worker.emit('request', requestInstance.request, requestInstance.response)
   })
   _connection.on('request:lost:stakeholder', ({uuid}) => {
@@ -117,10 +120,7 @@ const Worker = (settings) => {
       set (val) {
         if (isInteger(val)) {
           _concurrency = val
-          _connection.send(workerHeartbeatMessage(JSON.stringify({
-            concurrency: _concurrency,
-            pendingRequests: _requests.length
-          })))
+          _broadcastStatus()
         }
         return _concurrency
       }

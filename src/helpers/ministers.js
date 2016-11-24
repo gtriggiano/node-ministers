@@ -5,8 +5,8 @@ import { curry } from 'lodash'
 import compose from 'lodash/fp/compose'
 import isEqualFp from 'lodash/fp/isEqual'
 import getFp from 'lodash/fp/get'
-import filterFp from 'lodash/fp/filter'
-import negateFp from 'lodash/fp/negate'
+// import filterFp from 'lodash/fp/filter'
+// import negateFp from 'lodash/fp/negate'
 
 import {
   parseEndpoint
@@ -26,7 +26,7 @@ const discoverMinistersIPsByHost = (host) => new Promise((resolve, reject) => {
   })
 })
 const ministerHasId = (ministerId) => compose(isEqualFp(ministerId), getFp('id'))
-const filterEndpointsDifferentFrom = (endpoint) => filterFp(negateFp(isEqualFp(endpoint)))
+// const filterEndpointsDifferentFrom = (endpoint) => filterFp(negateFp(isEqualFp(endpoint)))
 const ministerDoesService = curry((service, minister) =>
   !!~minister.workers.map(({service}) => service).indexOf(service)
 )
@@ -82,7 +82,6 @@ export let discoverMinistersEndpoints = ({host, port, excludedEndpoint}) =>
   discoverMinistersIPsByHost(host)
   .then(concatPortToIPs(port))
   .then(prependTransportToAddresses('tcp'))
-  .then(filterEndpointsDifferentFrom(excludedEndpoint))
   .catch(() => [])
 export let getMinisterLatency = (ministerEndpoint) => new Promise((resolve, reject) => {
   let { ip, port } = parseEndpoint(ministerEndpoint)
