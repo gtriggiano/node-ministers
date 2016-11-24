@@ -27,7 +27,7 @@ describe('REQUEST >> RESPONSE FLOW:', () => {
   })
   it('a minister can delegate requests to other ministers', (done) => {
     let minister1 = M.Minister()
-    let minister2 = M.Minister({port: 5557, ministers: ['tcp://127.0.0.1:5555']})
+    let minister2 = M.Minister({port: 5557, advertiseEndpoint: 'tcp://127.0.0.1:5557', ministers: ['tcp://127.0.0.1:5555']})
     let client = M.Client({endpoint: 'tcp://127.0.0.1:5555'})
     let worker = M.Worker({service: 'Test', endpoint: 'tcp://127.0.0.1:5557'})
 

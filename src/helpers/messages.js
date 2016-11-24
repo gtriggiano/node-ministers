@@ -24,7 +24,7 @@ export let isMinisterWorkersAvailability = msg => msg[1] === CONSTANTS.M_WORKERS
 export let isMinisterDisconnect = msg => msg[1] === CONSTANTS.M_DISCONNECT
 export let isMinisterRequestLostStakeholder = msg => msg[1] === CONSTANTS.M_REQUEST_LOST_STAKEHOLDER
 
-export let isMinisterNotifierNewMinisterConnected = msg => msg[1] === CONSTANTS.MN_NEW_MINISTER_CONNECTED
+export let isMinisterNotifierNewMinisterConnecting = msg => msg[1] === CONSTANTS.MN_NEW_MINISTER_CONNECTING
 
 export let clientHelloMessage = () => [
   CONSTANTS.CLIENT,
@@ -111,8 +111,8 @@ export let ministerRequestLostStakeholder = (reqUUID) => [
   reqUUID
 ]
 
-export let notifierNewMinisterConnectedMessage = (infos) => [
+export let notifierNewMinisterConnectingMessage = (infos) => [
   CONSTANTS.MINISTER_NOTIFIER,
-  CONSTANTS.MN_NEW_MINISTER_CONNECTED,
+  CONSTANTS.MN_NEW_MINISTER_CONNECTING,
   infos
 ]
